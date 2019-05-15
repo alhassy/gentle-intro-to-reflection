@@ -5,7 +5,7 @@
 
 #
 #+TITLE: A Gentle Introduction to Reflection in Agda
-#+DESCRIPTION: How can we use a single proof to prove two different theorems?
+#+DESCRIPTION: How can we use a single proof to prove two different theorems? One proof pattern, multiple invocations!
 #+AUTHOR: Musa Al-hassy
 #+EMAIL: alhassy@gmail.com
 #+STARTUP: indent
@@ -39,7 +39,7 @@ module gentle-intro-to-reflection where
 
 open import Relation.Binary.PropositionalEquality hiding ([_])
 open import Reflection hiding (_≟_ ; name)
-open import Data.List
+open import Data.List as List
 open import Relation.Nullary
 
 open import Reflection
@@ -183,11 +183,14 @@ variable {A} : Set
 {- 𝒽idden 𝓇elevant 𝒶rgument -}
 𝒽𝓇𝒶 : A → Arg A
 𝒽𝓇𝒶 = arg (arg-info hidden relevant)
+#+END_SRC
 
-{- Variable counterparts, with a list of arguments.
-   The “Term” datatype will be discussed shortly.
--}
+Below are the variable counterparts, for the ~Term~ datatype,
+which will be discussed shortly.
++ Variables are De Bruijn indexed and may be applied to a list of arguments.
++ The index /n/ refers to the argument that is /n/ locations away from ‘here’.
 
+#+BEGIN_SRC org-agda
 {- 𝓋isible 𝓇elevant 𝓋ariable -}
 𝓋𝓇𝓋 : (debruijn : ℕ) (args : List (Arg Term)) → Arg Term
 𝓋𝓇𝓋 n args = arg (arg-info visible relevant) (var n args)
@@ -195,7 +198,6 @@ variable {A} : Set
 {- 𝒽idden 𝓇elevant 𝓋ariable -}
 𝒽𝓇𝓋 : (debruijn : ℕ) (args : List (Arg Term)) → Arg Term
 𝒽𝓇𝓋 n args = arg (arg-info hidden relevant) (var n args)
-
 #+END_SRC
 
 * ~Term~ ─Type of terms
@@ -498,7 +500,7 @@ postulate
 ~TC~ computations, or “metaprograms”, can be run declaring them as macros or by
 unquoting. Let's begin with the former.
 
-** Unquoting ─Making new functions & types
+* Unquoting ─Making new functions & types
 
 Recall our ~RGB~ example type was a simple enumeration consisting of ~Red, Green, Blue~.
 Consider the singleton type:
@@ -558,22 +560,44 @@ A programming stage, then an unquotation stage.
 
 #+BEGIN_SRC org-agda
 {- Definition stage, we can use ‘?’ as we form this program. -}
-define-Is : Name → TC ⊤
-define-Is id-name = defineFun id-name
-  [ clause [ 𝓋𝓇𝒶 (var "x") ] (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ “Red” ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
+define-Is : Name → Name → TC ⊤
+define-Is is-name qcolour = defineFun is-name
+  [ clause [ 𝓋𝓇𝒶 (var "x") ] (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ 𝓋𝓇𝒶 (con qcolour []) ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
+
+declare-Is : Name → Name → TC ⊤
+declare-Is is-name qcolour =
+  do let η = is-name
+     τ ← quoteTC (RGB → Set)
+     declareDef (𝓋𝓇𝒶 η) τ
+     defineFun is-name
+       [ clause [ 𝓋𝓇𝒶 (var "x") ]
+         (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ 𝓋𝓇𝒶 (con qcolour []) ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
 
 {- Unquotation stage -}
 IsRed′ : RGB → Set
-unquoteDef IsRed′ = define-Is IsRed′
+unquoteDef IsRed′ = define-Is IsRed′ (quote Red)
 
 {- Trying it out -}
 _ : IsRed′ Red
 _ = refl
 #+END_SRC
 
-The next natural step is to obtain the constructors ~Red, Green, Blue~
-then form ~IsC~ for each constructor ~C~. Unfortunately, it seems
-fresh names are not accessible, for some reason.
+Notice that if we use “unquoteDef”, we must provide a type signature.
+We only do so for illustration; the next code block avoids such a redundancy by
+using “unquoteDecl”.
+
+The above general approach lends itself nicely to the other data constructors as well:
+#+BEGIN_SRC org-agda
+unquoteDecl IsBlue  = declare-Is IsBlue  (quote Blue)
+unquoteDecl IsGreen = declare-Is IsGreen (quote Green)
+
+{- Example use -}
+disjoint-rgb  : ∀{c} → ¬ (IsBlue c × IsGreen c)
+disjoint-rgb (refl , ())
+#+END_SRC
+
+The next natural step is to avoid manually invoking ~declare-Is~ for each constructor.
+Unfortunately, it seems fresh names are not accessible, for some reason.
 
 For example, you would think the following would produce a function
 named ~gentle-intro-to-reflection.identity~. Yet, it is not in scope.
@@ -611,6 +635,25 @@ _ : K 3 "cat" ≡ 3
 _ = refl
 #+END_EXAMPLE
 
+*Bonus:* Proofs of a singleton type such as ~IsRed~ are essentially the same for all singelton types
+over ~RGB~. Write, in two stages, a metaprogram that demonstrates each singleton type has a single member
+─c.f., ~red-is-the-only-solution~ from above. Hint: This question is as easy as the ones before it.
+#+BEGIN_EXAMPLE org-agda
+{- Programming stage }
+declare-unique : Name → (RGB → Set) → RGB → TC ⊤
+declare-unique it S colour =
+  = do ⋯
+
+{- Unquotation stage -}
+unquoteDecl red-unique = declare-unique red-unique IsRed Red
+unquoteDecl green-unique = declare-unique green-unique IsGreen Green
+unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
+
+{- Test -}
+_ : ∀ {c} → IsGreen c → c ≡ Green
+_ = green-unique
+#+END_EXAMPLE
+
 :Solutions:
 #+BEGIN_SRC org-agda
 {- Exercise: -}
@@ -633,6 +676,22 @@ unquoteDecl K
 
 _ : K 3 "cat" ≡ 3
 _ = refl
+{- End -}
+
+{- Exercise: -}
+declare-unique : Name → (RGB → Set) → RGB → TC ⊤
+declare-unique it S colour =
+  do let η = it
+     τ ← quoteTC (∀ {c} → S c → c ≡ colour)
+     declareDef (𝓋𝓇𝒶 η) τ
+     defineFun η [ clause [ 𝓋𝓇𝒶 (con (quote refl) []) ] (con (quote refl) []) ]
+
+unquoteDecl red-unique = declare-unique red-unique IsRed Red
+unquoteDecl green-unique = declare-unique green-unique IsGreen Green
+unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
+
+_ : ∀ {c} → IsGreen c → c ≡ Green
+_ = green-unique
 {- End -}
 #+END_SRC
 :End:
@@ -662,8 +721,106 @@ unquoteDecl
 #+END_EXAMPLE
 :End:
 
-* COMMENT Monad Setup
+* Sidequest: Avoid tedious ~refl~ proofs
 
+Time for a breather (•̀ᴗ•́)و
+
+Look around your code base for a function that makes explicit pattern matching, such as:
+#+BEGIN_SRC org-agda
+just-Red : RGB → RGB
+just-Red Red   = Red
+just-Red Green = Red
+just-Red Blue  = Red
+
+only-Blue : RGB → RGB
+only-Blue Blue = Blue
+only-Blue _   = Blue
+#+END_SRC
+
+Such functions have properties which cannot be proven unless we pattern match
+on the arguments they pattern match. For example, that the above function is
+constantly ~Red~ requires pattern matching then a ~refl~ for each clause.
+#+BEGIN_SRC org-agda
+just-Red-is-constant : ∀{c} → just-Red c ≡ Red
+just-Red-is-constant {Red}   = refl
+just-Red-is-constant {Green} = refl
+just-Red-is-constant {Blue}  = refl
+
+{- Yuck, another tedious proof -}
+only-Blue-is-constant : ∀{c} → only-Blue c ≡ Blue
+only-Blue-is-constant {Blue}  = refl
+only-Blue-is-constant {Red}   = refl
+only-Blue-is-constant {Green} = refl
+#+END_SRC
+
+In such cases, we can encode the general design decisions ---/pattern match and yield refl/---
+then apply the schema to each use case.
+
+Here's the schema
+#+BEGIN_SRC org-agda
+RGB-constructors : Definition → List Name
+RGB-constructors (data-type pars cs) = cs
+RGB-constructors _ = []
+
+by-refls : Name → Term → TC ⊤
+by-refls nom thm-you-hope-is-provable-by-refls
+ = let mk-cls : Name → Clause
+       mk-cls qcolour = clause [ 𝒽𝓇𝒶 (con qcolour []) ] (con (quote refl) [])
+   in
+   do let η = nom
+      δ ← getDefinition (quote RGB)
+      let clauses = List.map mk-cls (RGB-constructors δ)
+      declareDef (𝓋𝓇𝒶 η) thm-you-hope-is-provable-by-refls
+      defineFun η clauses
+#+END_SRC
+
+Here's a use case.
+\begin{code}
+_ : ∀{c} → just-Red c ≡ Red
+_ = nice
+  where unquoteDecl nice = by-refls nice (quoteTerm (∀{c} → just-Red c ≡ Red))
+  \end{code}
+Note:
+0. The first ~nice~ refers to the function
+   created by the RHS of the unquote.
+
+1. The RHS ~nice~ refers to the Name value provided
+   by the LHS.
+
+2. The LHS ~nice~ is a declaration of a Name value.
+
+This is rather clunky since the theorem to be proven was repeated twice
+─repetition is a signal that something's wrong! In the next section we
+use macros to avoid such repetiton, as well as the ~quoteTerm~ keyword.
+
+Note that we use a ~where~ clause since unquotation cannot occur in a ~let~,
+for some reason.
+
+Here's another use case of the proof pattern (•̀ᴗ•́)و
+#+BEGIN_SRC org-agda
+_ : ∀{c} → only-Blue c ≡ Blue
+_ = nice
+  where unquoteDecl nice = by-refls nice (quoteTerm ∀{c} → only-Blue c ≡ Blue)
+#+END_SRC
+
+One proof pattern, multiple invocations!
+Super neat stuff :grin:
+
+* Macros
+
+** C-style macros
+
+In the C language one defines a macro, say, by ~#define luckyNum 1972~ then later uses
+it simply by the name ~luckyNum~. We can achieve this behaviour by placing our metaprogramming code within a ~macro~ block.
+#+BEGIN_SRC org-agda
+macro
+  luckyNum : Term → TC ⊤
+  luckyNum h = unify h (quoteTerm 55)
+
+num : ℕ
+num = luckyNum
+#+END_SRC
+Unlike C, all code fragments must be well-defined.
 
 * COMMENT Two theorems from a proof of ~x + 2 ≡ y~
 
@@ -679,15 +836,6 @@ Let's make some helpful abbreviations.
 𝓁₀ = arg (arg-info hidden relevant) (def (quote Level.zero) [])
 𝒩 = arg (arg-info hidden relevant) (def (quote ℕ) [])
 #+END_SRC
-
-* COMMENT A Spec environment
-Here's a literate Agda ~spec~-ification environment, which corresponds to an Org-mode ~EXAMPLE~ block.
-#+BEGIN_EXAMPLE org-agda
-module this-is-a-spec {A : Set} (_≤_ : A → A → Set) where
-
-  maximum-specfication : (candidate : A) → Set
-  maximum-specfication c = ?
-#+END_EXAMPLE
 
 * COMMENT README
 
@@ -716,9 +864,13 @@ C-c C-c: evalute src block
 
 Repo: https://github.com/alhassy/org-agda-mode
 
+# Having this with the local variables causes trees
+# to remain folded when moving to agda2-mode.
+#
+(progn (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
+
 # Local Variables:
 # eval: (visual-line-mode t)
-# eval: (progn (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
 # eval: (load-file "~/org-agda-mode/org-agda-mode.el")
 # eval: (load-file "~/org-agda-mode/literate.el")
 # End:

@@ -3,17 +3,20 @@ A slow-paced introduction to reflection in Agda. &#x2014;Tactics!
 
 # Table of Contents
 
-1.  [Imports](#org3752fac)
-2.  [Intro](#org6b5730b)
-3.  [`NAME` ─Type of known identifiers](#orga8834d6):forward_todo_link:
-4.  [`Arg` ─Type of arguments](#orgcf93db0)
-5.  [`Term` ─Type of terms](#org44133bc)
-    1.  [Example: Simple Types](#orga930808)
-    2.  [Example: Simple Terms](#orgcb02139)
-    3.  [A relationship between `quote` and `quoteTerm`](#orgf4d32f8)
-    4.  [Example: Lambda Terms](#org45b8545)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#org7568db1)
-    1.  [Unquoting ─Making new functions & types](#org2cad232)
+1.  [Imports](#orgbae0cab)
+2.  [Intro](#org1e17f7c)
+3.  [`NAME` ─Type of known identifiers](#org1c071b4):forward_todo_link:
+4.  [`Arg` ─Type of arguments](#org53f6e06)
+5.  [`Term` ─Type of terms](#orge2ded94)
+    1.  [Example: Simple Types](#org4c7eaff)
+    2.  [Example: Simple Terms](#org3db5bbc)
+    3.  [A relationship between `quote` and `quoteTerm`](#org8d6329c)
+    4.  [Example: Lambda Terms](#org9891664)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#org58528b2)
+7.  [Unquoting ─Making new functions & types](#orga93a42f)
+8.  [Sidequest: Avoid tedious `refl` proofs](#org75f1262)
+9.  [Macros](#org97d260e)
+    1.  [C-style macros](#org35e5174)
 
 <div class="org-center">
 **Abstract**
@@ -30,7 +33,7 @@ only exposes the reflection interface and provides a few tiny examples.
 Everything here works with Agda version 2.6.0.
 
 
-<a id="org3752fac"></a>
+<a id="orgbae0cab"></a>
 
 # Imports
 
@@ -38,7 +41,7 @@ Everything here works with Agda version 2.6.0.
 
     open import Relation.Binary.PropositionalEquality hiding ([_])
     open import Reflection hiding (_≟_ ; name)
-    open import Data.List
+    open import Data.List as List
     open import Relation.Nullary
 
     open import Reflection
@@ -59,7 +62,7 @@ Everything here works with Agda version 2.6.0.
     open import Relation.Nullary
 
 
-<a id="org6b5730b"></a>
+<a id="org1e17f7c"></a>
 
 # Intro
 
@@ -83,7 +86,7 @@ There are three main types in Agda's reflection mechanism:
       Red Green Blue : RGB
 
 
-<a id="orga8834d6"></a>
+<a id="org1c071b4"></a>
 
 # `NAME` ─Type of known identifiers     :forward_todo_link:
 
@@ -147,7 +150,7 @@ for which we can query to obtain its definition or type.
 Later we will show how to get the type constructors of `ℕ` from its name.
 
 
-<a id="orgcf93db0"></a>
+<a id="org53f6e06"></a>
 
 # `Arg` ─Type of arguments
 
@@ -181,9 +184,11 @@ For example, let's create some helpers that make arguments of any given type `A`
     𝒽𝓇𝒶 : A → Arg A
     𝒽𝓇𝒶 = arg (arg-info hidden relevant)
 
-    {- Variable counterparts, with a list of arguments.
-       The “Term” datatype will be discussed shortly.
-    -}
+Below are the variable counterparts, for the `Term` datatype,
+which will be discussed shortly.
+
+-   Variables are De Bruijn indexed and may be applied to a list of arguments.
+-   The index *n* refers to the argument that is *n* locations away from ‘here’.
 
     {- 𝓋isible 𝓇elevant 𝓋ariable -}
     𝓋𝓇𝓋 : (debruijn : ℕ) (args : List (Arg Term)) → Arg Term
@@ -194,7 +199,7 @@ For example, let's create some helpers that make arguments of any given type `A`
     𝒽𝓇𝓋 n args = arg (arg-info hidden relevant) (var n args)
 
 
-<a id="org44133bc"></a>
+<a id="orge2ded94"></a>
 
 # `Term` ─Type of terms
 
@@ -242,7 +247,7 @@ Here's the definition of `Term`:
       absurd-clause : (ps : List (Arg Pattern)) → Clause
 
 
-<a id="orga930808"></a>
+<a id="org4c7eaff"></a>
 
 ## Example: Simple Types
 
@@ -262,7 +267,7 @@ The last takes a visible and relevant argument, 𝓋𝓇𝒶, that is a literal 
     _ = refl
 
 
-<a id="orgcb02139"></a>
+<a id="org3db5bbc"></a>
 
 ## Example: Simple Terms
 
@@ -314,7 +319,7 @@ We will demonstrate an example of a section, say
 `≡_ "b"`, below when discussing lambda abstractions.
 
 
-<a id="orgf4d32f8"></a>
+<a id="org8d6329c"></a>
 
 ## A relationship between `quote` and `quoteTerm`
 
@@ -332,7 +337,7 @@ In contrast, names that *vary* are denoted by a `var` constructor in the AST rep
       _ = refl
 
 
-<a id="org45b8545"></a>
+<a id="org9891664"></a>
 
 ## Example: Lambda Terms
 
@@ -420,7 +425,7 @@ Finally, here's an example of a section.
     _ = refl
 
 
-<a id="org7568db1"></a>
+<a id="org58528b2"></a>
 
 # Metaprogramming with The Typechecking Monad `TC`
 
@@ -494,9 +499,9 @@ type errors, and metavariables.
 unquoting. Let's begin with the former.
 
 
-<a id="org2cad232"></a>
+<a id="orga93a42f"></a>
 
-## Unquoting ─Making new functions & types
+# Unquoting ─Making new functions & types
 
 Recall our `RGB` example type was a simple enumeration consisting of `Red, Green, Blue`.
 Consider the singleton type:
@@ -553,21 +558,42 @@ result in unsolved meta-variables. Instead, we split this process into two stage
 A programming stage, then an unquotation stage.
 
     {- Definition stage, we can use ‘?’ as we form this program. -}
-    define-Is : Name → TC ⊤
-    define-Is id-name = defineFun id-name
-      [ clause [ 𝓋𝓇𝒶 (var "x") ] (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ “Red” ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
+    define-Is : Name → Name → TC ⊤
+    define-Is is-name qcolour = defineFun is-name
+      [ clause [ 𝓋𝓇𝒶 (var "x") ] (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ 𝓋𝓇𝒶 (con qcolour []) ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
+
+    declare-Is : Name → Name → TC ⊤
+    declare-Is is-name qcolour =
+      do let η = is-name
+	 τ ← quoteTC (RGB → Set)
+	 declareDef (𝓋𝓇𝒶 η) τ
+	 defineFun is-name
+	   [ clause [ 𝓋𝓇𝒶 (var "x") ]
+	     (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ 𝓋𝓇𝒶 (con qcolour []) ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
 
     {- Unquotation stage -}
     IsRed′ : RGB → Set
-    unquoteDef IsRed′ = define-Is IsRed′
+    unquoteDef IsRed′ = define-Is IsRed′ (quote Red)
 
     {- Trying it out -}
     _ : IsRed′ Red
     _ = refl
 
-The next natural step is to obtain the constructors `Red, Green, Blue`
-then form `IsC` for each constructor `C`. Unfortunately, it seems
-fresh names are not accessible, for some reason.
+Notice that if we use “unquoteDef”, we must provide a type signature.
+We only do so for illustration; the next code block avoids such a redundancy by
+using “unquoteDecl”.
+
+The above general approach lends itself nicely to the other data constructors as well:
+
+    unquoteDecl IsBlue  = declare-Is IsBlue  (quote Blue)
+    unquoteDecl IsGreen = declare-Is IsGreen (quote Green)
+
+    {- Example use -}
+    disjoint-rgb  : ∀{c} → ¬ (IsBlue c × IsGreen c)
+    disjoint-rgb (refl , ())
+
+The next natural step is to avoid manually invoking `declare-Is` for each constructor.
+Unfortunately, it seems fresh names are not accessible, for some reason.
 
 For example, you would think the following would produce a function
 named `gentle-intro-to-reflection.identity`. Yet, it is not in scope.
@@ -604,6 +630,24 @@ I even tried extracting the definition to its own file and no luck.
     _ : K 3 "cat" ≡ 3
     _ = refl
 
+**Bonus:** Proofs of a singleton type such as `IsRed` are essentially the same for all singelton types
+over `RGB`. Write, in two stages, a metaprogram that demonstrates each singleton type has a single member
+─c.f., `red-is-the-only-solution` from above. Hint: This question is as easy as the ones before it.
+
+    {- Programming stage }
+    declare-unique : Name → (RGB → Set) → RGB → TC ⊤
+    declare-unique it S colour =
+      = do ⋯
+
+    {- Unquotation stage -}
+    unquoteDecl red-unique = declare-unique red-unique IsRed Red
+    unquoteDecl green-unique = declare-unique green-unique IsGreen Green
+    unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
+
+    {- Test -}
+    _ : ∀ {c} → IsGreen c → c ≡ Green
+    _ = green-unique
+
     {- Exercise: -}
     unquoteDecl everywhere-0
       = do let η = everywhere-0
@@ -626,6 +670,22 @@ I even tried extracting the definition to its own file and no luck.
     _ = refl
     {- End -}
 
+    {- Exercise: -}
+    declare-unique : Name → (RGB → Set) → RGB → TC ⊤
+    declare-unique it S colour =
+      do let η = it
+	 τ ← quoteTC (∀ {c} → S c → c ≡ colour)
+	 declareDef (𝓋𝓇𝒶 η) τ
+	 defineFun η [ clause [ 𝓋𝓇𝒶 (con (quote refl) []) ] (con (quote refl) []) ]
+
+    unquoteDecl red-unique = declare-unique red-unique IsRed Red
+    unquoteDecl green-unique = declare-unique green-unique IsGreen Green
+    unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
+
+    _ : ∀ {c} → IsGreen c → c ≡ Green
+    _ = green-unique
+    {- End -}
+
     RGB-constructors : Definition → Name × Name × Name
     RGB-constructors (data-type pars (x ∷ y ∷ z ∷ cs)) = x , y , z
     RGB-constructors _ = n , n , n where n = quote RGB
@@ -646,3 +706,112 @@ I even tried extracting the definition to its own file and no luck.
     -- _ : {!!} -- IsX Red -- gentle-intro-to-reflection.IsX
     -- _ = {!IsX!}
     --
+
+
+<a id="org75f1262"></a>
+
+# Sidequest: Avoid tedious `refl` proofs
+
+Time for a breather (•̀ᴗ•́)و
+
+Look around your code base for a function that makes explicit pattern matching, such as:
+
+    just-Red : RGB → RGB
+    just-Red Red   = Red
+    just-Red Green = Red
+    just-Red Blue  = Red
+
+    only-Blue : RGB → RGB
+    only-Blue Blue = Blue
+    only-Blue _   = Blue
+
+Such functions have properties which cannot be proven unless we pattern match
+on the arguments they pattern match. For example, that the above function is
+constantly `Red` requires pattern matching then a `refl` for each clause.
+
+    just-Red-is-constant : ∀{c} → just-Red c ≡ Red
+    just-Red-is-constant {Red}   = refl
+    just-Red-is-constant {Green} = refl
+    just-Red-is-constant {Blue}  = refl
+
+    {- Yuck, another tedious proof -}
+    only-Blue-is-constant : ∀{c} → only-Blue c ≡ Blue
+    only-Blue-is-constant {Blue}  = refl
+    only-Blue-is-constant {Red}   = refl
+    only-Blue-is-constant {Green} = refl
+
+In such cases, we can encode the general design decisions ---*pattern match and yield refl*&#x2014;
+then apply the schema to each use case.
+
+Here's the schema
+
+    RGB-constructors : Definition → List Name
+    RGB-constructors (data-type pars cs) = cs
+    RGB-constructors _ = []
+
+    by-refls : Name → Term → TC ⊤
+    by-refls nom thm-you-hope-is-provable-by-refls
+     = let mk-cls : Name → Clause
+	   mk-cls qcolour = clause [ 𝒽𝓇𝒶 (con qcolour []) ] (con (quote refl) [])
+       in
+       do let η = nom
+	  δ ← getDefinition (quote RGB)
+	  let clauses = List.map mk-cls (RGB-constructors δ)
+	  declareDef (𝓋𝓇𝒶 η) thm-you-hope-is-provable-by-refls
+	  defineFun η clauses
+
+Here's a use case.
+
+\begin{code}
+_ : ∀{c} → just-Red c ≡ Red
+_ = nice
+  where unquoteDecl nice = by-refls nice (quoteTerm (∀{c} → just-Red c ≡ Red))
+  \end{code}
+
+Note:
+
+1.  The first `nice` refers to the function
+    created by the RHS of the unquote.
+
+2.  The RHS `nice` refers to the Name value provided
+    by the LHS.
+
+3.  The LHS `nice` is a declaration of a Name value.
+
+This is rather clunky since the theorem to be proven was repeated twice
+─repetition is a signal that something's wrong! In the next section we
+use macros to avoid such repetiton, as well as the `quoteTerm` keyword.
+
+Note that we use a `where` clause since unquotation cannot occur in a `let`,
+for some reason.
+
+Here's another use case of the proof pattern (•̀ᴗ•́)و
+
+    _ : ∀{c} → only-Blue c ≡ Blue
+    _ = nice
+      where unquoteDecl nice = by-refls nice (quoteTerm ∀{c} → only-Blue c ≡ Blue)
+
+One proof pattern, multiple invocations!
+Super neat stuff :grin:
+
+
+<a id="org97d260e"></a>
+
+# Macros
+
+
+<a id="org35e5174"></a>
+
+## C-style macros
+
+In the C language one defines a macro, say, by `#define luckyNum 1972` then later uses
+it simply by the name `luckyNum`. We can achieve this behaviour by placing our metaprogramming code within a `macro` block.
+
+    macro
+      luckyNum : Term → TC ⊤
+      luckyNum h = unify h (quoteTerm 55)
+
+    num : ℕ
+    num = luckyNum
+
+Unlike C, all code fragments must be well-defined.
