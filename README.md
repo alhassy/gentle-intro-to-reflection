@@ -3,20 +3,21 @@ A slow-paced introduction to reflection in Agda. &#x2014;Tactics!
 
 # Table of Contents
 
-1.  [Imports](#orgbae0cab)
-2.  [Intro](#org1e17f7c)
-3.  [`NAME` ─Type of known identifiers](#org1c071b4):forward_todo_link:
-4.  [`Arg` ─Type of arguments](#org53f6e06)
-5.  [`Term` ─Type of terms](#orge2ded94)
-    1.  [Example: Simple Types](#org4c7eaff)
-    2.  [Example: Simple Terms](#org3db5bbc)
-    3.  [A relationship between `quote` and `quoteTerm`](#org8d6329c)
-    4.  [Example: Lambda Terms](#org9891664)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#org58528b2)
-7.  [Unquoting ─Making new functions & types](#orga93a42f)
-8.  [Sidequest: Avoid tedious `refl` proofs](#org75f1262)
-9.  [Macros](#org97d260e)
-    1.  [C-style macros](#org35e5174)
+1.  [Imports](#org521a88a)
+2.  [Intro](#orgcfd2ffe)
+3.  [`NAME` ─Type of known identifiers](#orgee93d21):forward_todo_link:
+4.  [`Arg` ─Type of arguments](#orgae99eb2)
+5.  [`Term` ─Type of terms](#org2481ae1)
+    1.  [Example: Simple Types](#org86d1ad5)
+    2.  [Example: Simple Terms](#org5336e8e)
+    3.  [A relationship between `quote` and `quoteTerm`](#orgf461e39)
+    4.  [Example: Lambda Terms](#orgc7f0127)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#org7f01cf0)
+7.  [Unquoting ─Making new functions & types](#org786cff7)
+8.  [Sidequest: Avoid tedious `refl` proofs](#org635ef83)
+9.  [Macros ─Abstracting Proof Patterns](#orgc961cb8)
+    1.  [C-style macros](#orgd0b064b)
+    2.  [Tedious Repetitive Proofs No More!](#org256d6bb)
 
 <div class="org-center">
 **Abstract**
@@ -29,11 +30,25 @@ Let's learn how we can do that in Agda.
 This tutorial is the result of mostly experimenting with the
 [documentation](https://agda.readthedocs.io/en/v2.5.2/language/reflection.html) on Agda's reflection mechanism, which essentially
 only exposes the reflection interface and provides a few tiny examples.
+The goal of this tutorial is to contain a diverse variety of examples,
+along with occasional exercises for the reader.
+
+Examples include:
+
+-   String manipulation of built-in identifier names. 🍓
+-   Handy dandy combinators for AST formation: `𝓋𝓇𝒶, λ𝓋_↦_, …`. 🛠
+-   Numerous examples of quotation of terms and types. 🎯
+-   Wholesale derivation of singleton types for an example datatype,
+    along with derivable proofs 💛 🎵
+-   Automating proofs that are only `refl` *with* pattern matching 🏄
+-   Remarks on what I could not do, possibly since it cannot be done :sob:
+-   Discussion of C-style macros in Agda 🌵
+-   Abstracting proofs patterns without syntactic overhead using macros 💪 🎼
 
 Everything here works with Agda version 2.6.0.
 
 
-<a id="orgbae0cab"></a>
+<a id="org521a88a"></a>
 
 # Imports
 
@@ -62,7 +77,7 @@ Everything here works with Agda version 2.6.0.
     open import Relation.Nullary
 
 
-<a id="org1e17f7c"></a>
+<a id="orgcfd2ffe"></a>
 
 # Intro
 
@@ -86,7 +101,7 @@ There are three main types in Agda's reflection mechanism:
       Red Green Blue : RGB
 
 
-<a id="org1c071b4"></a>
+<a id="orgee93d21"></a>
 
 # `NAME` ─Type of known identifiers     :forward_todo_link:
 
@@ -150,7 +165,7 @@ for which we can query to obtain its definition or type.
 Later we will show how to get the type constructors of `ℕ` from its name.
 
 
-<a id="org53f6e06"></a>
+<a id="orgae99eb2"></a>
 
 # `Arg` ─Type of arguments
 
@@ -199,7 +214,7 @@ which will be discussed shortly.
     𝒽𝓇𝓋 n args = arg (arg-info hidden relevant) (var n args)
 
 
-<a id="orge2ded94"></a>
+<a id="org2481ae1"></a>
 
 # `Term` ─Type of terms
 
@@ -247,7 +262,7 @@ Here's the definition of `Term`:
       absurd-clause : (ps : List (Arg Pattern)) → Clause
 
 
-<a id="org4c7eaff"></a>
+<a id="org86d1ad5"></a>
 
 ## Example: Simple Types
 
@@ -267,7 +282,7 @@ The last takes a visible and relevant argument, 𝓋𝓇𝒶, that is a literal 
     _ = refl
 
 
-<a id="org3db5bbc"></a>
+<a id="org5336e8e"></a>
 
 ## Example: Simple Terms
 
@@ -319,7 +334,7 @@ We will demonstrate an example of a section, say
 `≡_ "b"`, below when discussing lambda abstractions.
 
 
-<a id="org8d6329c"></a>
+<a id="orgf461e39"></a>
 
 ## A relationship between `quote` and `quoteTerm`
 
@@ -337,7 +352,7 @@ In contrast, names that *vary* are denoted by a `var` constructor in the AST rep
       _ = refl
 
 
-<a id="org9891664"></a>
+<a id="orgc7f0127"></a>
 
 ## Example: Lambda Terms
 
@@ -425,7 +440,7 @@ Finally, here's an example of a section.
     _ = refl
 
 
-<a id="org58528b2"></a>
+<a id="org7f01cf0"></a>
 
 # Metaprogramming with The Typechecking Monad `TC`
 
@@ -499,7 +514,7 @@ type errors, and metavariables.
 unquoting. Let's begin with the former.
 
 
-<a id="orga93a42f"></a>
+<a id="org786cff7"></a>
 
 # Unquoting ─Making new functions & types
 
@@ -593,7 +608,7 @@ The above general approach lends itself nicely to the other data constructors as
     disjoint-rgb (refl , ())
 
 The next natural step is to avoid manually invoking `declare-Is` for each constructor.
-Unfortunately, it seems fresh names are not accessible, for some reason.
+Unfortunately, it seems fresh names are not accessible, for some reason. 😢
 
 For example, you would think the following would produce a function
 named `gentle-intro-to-reflection.identity`. Yet, it is not in scope.
@@ -648,67 +663,8 @@ over `RGB`. Write, in two stages, a metaprogram that demonstrates each singleton
     _ : ∀ {c} → IsGreen c → c ≡ Green
     _ = green-unique
 
-    {- Exercise: -}
-    unquoteDecl everywhere-0
-      = do let η = everywhere-0
-	   τ ← quoteTC (ℕ → ℕ)
-	   declareDef (𝓋𝓇𝒶 η) τ
-	   defineFun η [ clause [ 𝓋𝓇𝒶 (var "x") ] (con (quote zero) []) ]
 
-    _ : everywhere-0 3 ≡ 0
-    _ = refl
-    {- End -}
-
-    {- Exercise: -}
-    unquoteDecl K
-      = do let η = K
-	   τ ← quoteTC ({A B : Set} → A → B → A)
-	   declareDef (𝓋𝓇𝒶 η) τ
-	   defineFun η [ clause (𝓋𝓇𝒶 (var "x") ∷ 𝓋𝓇𝒶 (var "y") ∷ []) (var 1 []) ]
-
-    _ : K 3 "cat" ≡ 3
-    _ = refl
-    {- End -}
-
-    {- Exercise: -}
-    declare-unique : Name → (RGB → Set) → RGB → TC ⊤
-    declare-unique it S colour =
-      do let η = it
-	 τ ← quoteTC (∀ {c} → S c → c ≡ colour)
-	 declareDef (𝓋𝓇𝒶 η) τ
-	 defineFun η [ clause [ 𝓋𝓇𝒶 (con (quote refl) []) ] (con (quote refl) []) ]
-
-    unquoteDecl red-unique = declare-unique red-unique IsRed Red
-    unquoteDecl green-unique = declare-unique green-unique IsGreen Green
-    unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
-
-    _ : ∀ {c} → IsGreen c → c ≡ Green
-    _ = green-unique
-    {- End -}
-
-    RGB-constructors : Definition → Name × Name × Name
-    RGB-constructors (data-type pars (x ∷ y ∷ z ∷ cs)) = x , y , z
-    RGB-constructors _ = n , n , n where n = quote RGB
-
-    unquoteDecl
-      =    do δ ← getDefinition (quote RGB)
-
-	      let r , g , b = RGB-constructors δ
-	   -- TODO: get unqualified name, then prefix it with "Is",
-	   -- then make that into a new name. Then declare a function with that name.
-
-	      η ← freshName "IsX"
-	      -- let η = r
-	      τ ← quoteTC (RGB → Set)
-	      declareDef (𝓋𝓇𝒶 η) τ
-	      define-Is η
-
-    -- _ : {!!} -- IsX Red -- gentle-intro-to-reflection.IsX
-    -- _ = {!IsX!}
-    --
-
-
-<a id="org75f1262"></a>
+<a id="org635ef83"></a>
 
 # Sidequest: Avoid tedious `refl` proofs
 
@@ -743,11 +699,11 @@ constantly `Red` requires pattern matching then a `refl` for each clause.
 In such cases, we can encode the general design decisions ---*pattern match and yield refl*&#x2014;
 then apply the schema to each use case.
 
-Here's the schema
+Here's the schema:
 
-    RGB-constructors : Definition → List Name
-    RGB-constructors (data-type pars cs) = cs
-    RGB-constructors _ = []
+    constructors : Definition → List Name
+    constructors (data-type pars cs) = cs
+    constructors _ = []
 
     by-refls : Name → Term → TC ⊤
     by-refls nom thm-you-hope-is-provable-by-refls
@@ -756,17 +712,15 @@ Here's the schema
        in
        do let η = nom
 	  δ ← getDefinition (quote RGB)
-	  let clauses = List.map mk-cls (RGB-constructors δ)
+	  let clauses = List.map mk-cls (constructors δ)
 	  declareDef (𝓋𝓇𝒶 η) thm-you-hope-is-provable-by-refls
 	  defineFun η clauses
 
 Here's a use case.
 
-\begin{code}
-_ : ∀{c} → just-Red c ≡ Red
-_ = nice
-  where unquoteDecl nice = by-refls nice (quoteTerm (∀{c} → just-Red c ≡ Red))
-  \end{code}
+    _ : ∀{c} → just-Red c ≡ Red
+    _ = nice
+      where unquoteDecl nice = by-refls nice (quoteTerm (∀{c} → just-Red c ≡ Red))
 
 Note:
 
@@ -795,17 +749,45 @@ One proof pattern, multiple invocations!
 Super neat stuff :grin:
 
 
-<a id="org97d260e"></a>
+<a id="orgc961cb8"></a>
 
-# Macros
+# Macros ─Abstracting Proof Patterns
+
+Macros are functions of type `τ₀ → τ₁ → ⋯ → Term → TC ⊤` that are defined in a
+`macro` block. The last argument is supplied by the type checker and denotes
+the “goal” of where the macro is placed: One generally unifies what they have
+with the goal, what is desired in the use site.
+
+Why the `macro` block?
+
+-   Metaprograms can be run in a term position.
+-   Without the macro block, we run computations using the `unquote` keyword.
+-   Quotations are performed automatically; e.g.,
+    if `f : Term → Name → Bool → Term → TC ⊤`
+    then an application `f u v w` desugars into
+    `unquote (f (quoteTerm u) (quote v) w)`.
+
+    No syntactic overhead: Macros are applied like normal functions.
+
+Macros cannot be recursive; instead one defines a recursive function outside the
+macro block then has the macro call the recursive function.
 
 
-<a id="org35e5174"></a>
+<a id="orgd0b064b"></a>
 
 ## C-style macros
 
 In the C language one defines a macro, say, by `#define luckyNum 1972` then later uses
-it simply by the name `luckyNum`. We can achieve this behaviour by placing our metaprogramming code within a `macro` block.
+it simply by the name `luckyNum`. Without macros, we have syntactic overhead using
+the `unquote` keyword:
+
+    luckyNum₀ : Term → TC ⊤
+    luckyNum₀ h = unify h (quoteTerm 55)
+
+    num₀ : ℕ
+    num₀ = unquote luckyNum₀
+
+Instead, we can achieve C-style behaviour by placing our metaprogramming code within a `macro` block.
 
     macro
       luckyNum : Term → TC ⊤
@@ -815,3 +797,138 @@ it simply by the name `luckyNum`. We can achieve this behaviour by placing our m
     num = luckyNum
 
 Unlike C, all code fragments must be well-defined.
+
+**Exercise:** Write a macro to always yield the first argument in a function.
+The second example shows how it can be used to access implicit arguments
+without mentioning them :b
+
+    macro
+      first : Term → TC ⊤
+      first goal = ⋯
+
+    myconst : {A B : Set} → A → B → A
+    myconst = λ x → λ y → first
+
+    mysum : ( {x} y : ℕ) → ℕ
+    mysum y = y + first
+
+
+<a id="org256d6bb"></a>
+
+## Tedious Repetitive Proofs No More!
+
+Suppose we wish to prove that addition, multiplication, and exponentiation
+have right units 0, 1, and 1 respectively. We obtain the following nearly identical
+proofs!
+
+    +-rid : ∀{n} → n + 0 ≡ n
+    +-rid {zero}  = refl
+    +-rid {suc n} = cong suc +-rid
+
+    *-rid : ∀{n} → n * 1 ≡ n
+    *-rid {zero}  = refl
+    *-rid {suc n} = cong suc *-rid
+
+    ^-rid : ∀{n} → n ^ 1 ≡ n
+    ^-rid {zero}  = refl
+    ^-rid {suc n} = cong suc ^-rid
+
+There is clearly a pattern here screaming to be abstracted, let's comply ♥‿♥
+
+The natural course of action in a functional language is to try a higher-order combinator:
+
+    {- “for loops” or “Induction for ℕ” -}
+    foldn : (P : ℕ → Set) (base : P zero) (ind : ∀ n → P n → P (suc n))
+	  → ∀(n : ℕ) → P n
+    foldn P base ind zero    = base
+    foldn P base ind (suc n) = ind n (foldn P base ind n)
+
+Now the proofs are shorter:
+
+    _ : ∀ (x : ℕ) → x + 0 ≡ x
+    _ = foldn _ refl (λ _ → cong suc)    {- This and next two are the same -}
+
+    _ : ∀ (x : ℕ) → x * 1 ≡ x
+    _ = foldn _ refl (λ _ → cong suc)    {- Yup, same proof as previous -}
+
+    _ : ∀ (x : ℕ) → x ^ 1 ≡ x
+    _ = foldn _ refl (λ _ → cong suc)    {- No change, same proof as previous -}
+
+Unfortunately, we are manually copy-pasting the same proof *pattern*.
+
+> When you see repetition, copy-pasting, know that there is room for improvement! (•̀ᴗ•́)و
+>
+> Don't repeat yourself!
+
+Repetition can be mitigated a number of ways, including typeclasses or metaprogramming, for example.
+The latter requires possibly less thought and it's the topic of this article, so let's do that :smile:
+
+**Exercise**: Following the template of the previous exercises, fill in the missing parts below.
+Hint: It's nearly the same level of difficulty as the previous exercises.
+
+    make-rid : (let A = ℕ) (_⊕_ : A → A → A) (e : A) → Name → TC ⊤
+    make-rid _⊕_ e nom
+     = do ⋯
+
+    _ : ∀{x : ℕ} → x + 0 ≡ x
+    _ = nice where unquoteDecl nice = make-rid _+_ 0 nice
+
+There's too much syntactic overhead here, let's use macros instead.
+
+    macro
+      _trivially-has-rid_ : (let A = ℕ) (_⊕_ : A → A → A) (e : A) → Term → TC ⊤
+      _trivially-has-rid_ _⊕_ e goal
+       = do τ ← quoteTC (λ(x : ℕ) → x ⊕ e ≡ x)
+	    unify goal (def (quote foldn)            {- Using foldn    -}
+	      ( 𝓋𝓇𝒶 τ                                {- Type P         -}
+	      ∷ 𝓋𝓇𝒶 (con (quote refl) [])            {- Base case      -}
+	      ∷ 𝓋𝓇𝒶 (λ𝓋 "_" ↦ quoteTerm (cong suc))  {- Inductive step -}
+	      ∷ []))
+
+Now the proofs have minimal repetition *and* the proof pattern is written only *once*:
+
+    _ : ∀ (x : ℕ) → x + 0 ≡ x
+    _ = _+_ trivially-has-rid 0
+
+    _ : ∀ (x : ℕ) → x * 1 ≡ x
+    _ = _*_ trivially-has-rid 1
+
+    _ : ∀ (x : ℕ) → x * 1 ≡ x
+    _ = _^_ trivially-has-rid 1
+
+Note we could look at the type of the goal, find the operator `_⊕_` and the unit;
+they need not be passed in. Later we will see how to reach into the goal type
+and pull pieces of it out for manipulation (•̀ᴗ•́)و
+
+Before one abstracts a pattern into a macro, it's useful to have a few instances
+of the pattern beforehand. When abstracting, one may want to compare how we think
+versus how Agda's thinking. For example, you may have noticed that in the previous
+macro, Agda normalised the expression `suc n + 0` into `suc (n + 0)` by invoking the definition
+of `_+_`. We may inspect the goal of a function with the `quoteGoal ⋯ in ⋯` syntax:
+
+    +-rid′ : ∀{n} → n + 0 ≡ n
+    +-rid′ {zero}  = refl
+    +-rid′ {suc n} = quoteGoal e in
+      let
+	suc-n : Term
+	suc-n = con (quote suc) [ 𝓋𝓇𝒶 (var 0 []) ]
+
+	lhs : Term
+	lhs = def (quote _+_) (𝓋𝓇𝒶 suc-n ∷ 𝓋𝓇𝒶 (lit (nat 0)) ∷ [])
+
+	{- Check our understanding of what the goal is “e”. -}
+	_ : e ≡ def (quote _≡_)
+		     (𝒽𝓇𝒶 (quoteTerm Level.zero) ∷ 𝒽𝓇𝒶 (quoteTerm ℕ)
+		     ∷ 𝓋𝓇𝒶 lhs ∷ 𝓋𝓇𝒶 suc-n ∷ [])
+	_ = refl
+
+	{- What does it look normalised. -}
+	_ :   quoteTerm (suc (n + 0) ≡ n)
+	     ≡ unquote λ goal → (do g ← normalise goal; unify g goal)
+	_ = refl
+      in
+      cong suc +-rid′
+
+It would be really nice to simply replace the last line by a macro, say `induction`.
+Unfortunately, for that I would need to obtain the name `+-rid′`, which as far as I could
+tell is not possible with the current reflection mechanism.
