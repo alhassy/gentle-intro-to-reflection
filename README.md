@@ -1,24 +1,5 @@
 A slow-paced introduction to reflection in Agda. &#x2014;Tactics!
 
-
-# Table of Contents
-
-1.  [Imports](#org521a88a)
-2.  [Intro](#orgcfd2ffe)
-3.  [`NAME` ─Type of known identifiers](#orgee93d21):forward_todo_link:
-4.  [`Arg` ─Type of arguments](#orgae99eb2)
-5.  [`Term` ─Type of terms](#org2481ae1)
-    1.  [Example: Simple Types](#org86d1ad5)
-    2.  [Example: Simple Terms](#org5336e8e)
-    3.  [A relationship between `quote` and `quoteTerm`](#orgf461e39)
-    4.  [Example: Lambda Terms](#orgc7f0127)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#org7f01cf0)
-7.  [Unquoting ─Making new functions & types](#org786cff7)
-8.  [Sidequest: Avoid tedious `refl` proofs](#org635ef83)
-9.  [Macros ─Abstracting Proof Patterns](#orgc961cb8)
-    1.  [C-style macros](#orgd0b064b)
-    2.  [Tedious Repetitive Proofs No More!](#org256d6bb)
-
 <div class="org-center">
 **Abstract**
 </div>
@@ -41,14 +22,32 @@ Examples include:
 -   Wholesale derivation of singleton types for an example datatype,
     along with derivable proofs 💛 🎵
 -   Automating proofs that are only `refl` *with* pattern matching 🏄
--   Remarks on what I could not do, possibly since it cannot be done :sob:
 -   Discussion of C-style macros in Agda 🌵
 -   Abstracting proofs patterns without syntactic overhead using macros 💪 🎼
+-   Remarks on what I could not do, possibly since it cannot be done :sob:
 
 Everything here works with Agda version 2.6.0.
 
 
-<a id="org521a88a"></a>
+# Table of Contents
+
+1.  [Imports](#org748b976)
+2.  [Intro](#org3a01b18)
+3.  [`NAME` ─Type of known identifiers](#orgff24739):forward_todo_link:
+4.  [`Arg` ─Type of arguments](#org5772f15)
+5.  [`Term` ─Type of terms](#org94750ee)
+    1.  [Example: Simple Types](#org4af9ce7)
+    2.  [Example: Simple Terms](#org71e9696)
+    3.  [A relationship between `quote` and `quoteTerm`](#org35279db)
+    4.  [Example: Lambda Terms](#orgeaa4a9e)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#org17fcba9)
+7.  [Unquoting ─Making new functions & types](#orgdc58220)
+8.  [Sidequest: Avoid tedious `refl` proofs](#org9b17e86)
+9.  [Macros ─Abstracting Proof Patterns](#org3b4a0ee)
+    1.  [C-style macros](#org30ab3b8)
+    2.  [Tedious Repetitive Proofs No More!](#org2d6c332)
+10. [Our First Real Proof Tactic](#org2370ee7)
+
 
 # Imports
 
@@ -77,8 +76,6 @@ Everything here works with Agda version 2.6.0.
     open import Relation.Nullary
 
 
-<a id="orgcfd2ffe"></a>
-
 # Intro
 
 *Reflection* is the ability to convert program code into an abstract syntax,
@@ -100,8 +97,6 @@ There are three main types in Agda's reflection mechanism:
     data RGB : Set where
       Red Green Blue : RGB
 
-
-<a id="orgee93d21"></a>
 
 # `NAME` ─Type of known identifiers     :forward_todo_link:
 
@@ -165,8 +160,6 @@ for which we can query to obtain its definition or type.
 Later we will show how to get the type constructors of `ℕ` from its name.
 
 
-<a id="orgae99eb2"></a>
-
 # `Arg` ─Type of arguments
 
 Arguments in Agda may be hidden or computationally irrelevant.
@@ -214,8 +207,6 @@ which will be discussed shortly.
     𝒽𝓇𝓋 n args = arg (arg-info hidden relevant) (var n args)
 
 
-<a id="org2481ae1"></a>
-
 # `Term` ─Type of terms
 
 We use the `quoteTerm` keyword to turn a well-typed fragment of code
@@ -262,8 +253,6 @@ Here's the definition of `Term`:
       absurd-clause : (ps : List (Arg Pattern)) → Clause
 
 
-<a id="org86d1ad5"></a>
-
 ## Example: Simple Types
 
 Here are three examples of “def”ined names, the first two do not take an argument.
@@ -281,8 +270,6 @@ The last takes a visible and relevant argument, 𝓋𝓇𝒶, that is a literal 
     _ : quoteTerm (F.Fin 3) ≡ def (quote F.Fin) (𝓋𝓇𝒶 (lit (nat 3)) ∷ [])
     _ = refl
 
-
-<a id="org5336e8e"></a>
 
 ## Example: Simple Terms
 
@@ -334,8 +321,6 @@ We will demonstrate an example of a section, say
 `≡_ "b"`, below when discussing lambda abstractions.
 
 
-<a id="orgf461e39"></a>
-
 ## A relationship between `quote` and `quoteTerm`
 
 Known names `f'` in a quoted term are denoted by a `quote f'` in the AST representation.
@@ -351,8 +336,6 @@ In contrast, names that *vary* are denoted by a `var` constructor in the AST rep
       _ : quoteTerm f ≡ var 0 []
       _ = refl
 
-
-<a id="orgc7f0127"></a>
 
 ## Example: Lambda Terms
 
@@ -440,8 +423,6 @@ Finally, here's an example of a section.
     _ = refl
 
 
-<a id="org7f01cf0"></a>
-
 # Metaprogramming with The Typechecking Monad `TC`
 
 The `TC` monad provides an interface to Agda's type checker.
@@ -510,11 +491,9 @@ type errors, and metavariables.
 	  normalisation. -}
       withNormalisation : ∀ {a} {A : Set a} → Bool → TC A → TC A
 
-`TC` computations, or “metaprograms”, can be run declaring them as macros or by
+`TC` computations, or “metaprograms”, can be run by declaring them as macros or by
 unquoting. Let's begin with the former.
 
-
-<a id="org786cff7"></a>
 
 # Unquoting ─Making new functions & types
 
@@ -664,8 +643,6 @@ over `RGB`. Write, in two stages, a metaprogram that demonstrates each singleton
     _ = green-unique
 
 
-<a id="org635ef83"></a>
-
 # Sidequest: Avoid tedious `refl` proofs
 
 Time for a breather (•̀ᴗ•́)و
@@ -749,8 +726,6 @@ One proof pattern, multiple invocations!
 Super neat stuff :grin:
 
 
-<a id="orgc961cb8"></a>
-
 # Macros ─Abstracting Proof Patterns
 
 Macros are functions of type `τ₀ → τ₁ → ⋯ → Term → TC ⊤` that are defined in a
@@ -772,8 +747,6 @@ Why the `macro` block?
 Macros cannot be recursive; instead one defines a recursive function outside the
 macro block then has the macro call the recursive function.
 
-
-<a id="orgd0b064b"></a>
 
 ## C-style macros
 
@@ -812,8 +785,6 @@ without mentioning them :b
     mysum : ( {x} y : ℕ) → ℕ
     mysum y = y + first
 
-
-<a id="org256d6bb"></a>
 
 ## Tedious Repetitive Proofs No More!
 
@@ -900,6 +871,9 @@ Note we could look at the type of the goal, find the operator `_⊕_` and the un
 they need not be passed in. Later we will see how to reach into the goal type
 and pull pieces of it out for manipulation (•̀ᴗ•́)و
 
+It would have been ideal if we could have defined our macro without using `foldn`;
+I could not figure out how to do that. 😧
+
 Before one abstracts a pattern into a macro, it's useful to have a few instances
 of the pattern beforehand. When abstracting, one may want to compare how we think
 versus how Agda's thinking. For example, you may have noticed that in the previous
@@ -932,3 +906,98 @@ of `_+_`. We may inspect the goal of a function with the `quoteGoal ⋯ in ⋯` 
 It would be really nice to simply replace the last line by a macro, say `induction`.
 Unfortunately, for that I would need to obtain the name `+-rid′`, which as far as I could
 tell is not possible with the current reflection mechanism.
+
+
+# Our First Real Proof Tactic
+
+When we have a proof `p : x ≡ y` it is a nuisance to have to write `sym p` to prove `y ≡ x`
+─we have to remember which ‘direction’ `p`. Let's alleviate such a small burden, then use
+the tools here to alleviate a larger burden later; namely, rewriting subexpressions.
+
+Given `p : x ≡ y`, we cannot simply yield `def (quote sym) [ 𝓋𝓇𝒶 p ]` since `sym` actually
+takes four arguments ─compare when we quoted `_≡_` earlier. Instead, we infer type of `p`
+to be, say, `quoteTerm (_≡_ {ℓ} {A} x y)`. Then we can correctly provide all the required arguments.
+
+    ≡-type-info : Term → TC (Arg Term × Arg Term × Term × Term)
+    ≡-type-info (def (quote _≡_) (𝓁 ∷ 𝒯 ∷ arg _ l ∷ arg _ r ∷ [])) = returnTC (𝓁 , 𝒯 , l , r)
+    ≡-type-info _ = typeError [ strErr "Term is not a ≡-type." ]
+
+What if later we decided that we did not want a proof of `x ≡ y`, but rather of `x ≡ y`.
+In this case, the orginal proof `p` suffices. Rather than rewriting our proof term, our
+macro could try providing it if the symmetry application fails.
+
+    {- Syntactic sugar for trying a computation, if it fails then try the other one -}
+    try-fun : ∀ {a} {A : Set a} → TC A → TC A → TC A
+    try-fun = catchTC
+
+    syntax try-fun t f = try t or-else f
+
+With the setup in hand, we can now form our macro:
+
+    macro
+      apply₁ : Term → Term → TC ⊤
+      apply₁ p goal = try (do τ ← inferType p
+			      𝓁 , 𝒯 , l , r ← ≡-type-info τ
+			      unify goal (def (quote sym) (𝓁 ∷ 𝒯 ∷ 𝒽𝓇𝒶 l ∷ 𝒽𝓇𝒶 r ∷ 𝓋𝓇𝒶 p ∷ [])))
+		      or-else
+			   unify goal p
+
+For example,
+
+    postulate x y : ℕ
+    postulate q : x + 2 ≡ y
+
+    {- Same proof yields two theorems! (งಠ_ಠ)ง -}
+    _ : y ≡ x + 2
+    _ = apply₁ q
+
+    _ : x + 2 ≡ y
+    _ = apply₁ q
+
+Let's furnish ourselves with the ability to inspect the *produced* proofs.
+
+    {- Type annotation -}
+    syntax has A a = a ∶ A -- “\:”
+
+    has : ∀ (A : Set) (a : A) → A
+    has A a = a
+
+Let's try this on an arbitrary type:
+
+    woah : {A : Set} (x y : A) → x ≡ y → (y ≡ x) × (x ≡ y)
+    woah x y p = apply₁ p , apply₁ p
+
+      where -- Each invocation generates a different proof, indeed:
+
+      first-pf : (apply₁ p ∶ (y ≡ x)) ≡ sym p
+      first-pf = refl
+
+      second-pf : (apply₁ p ∶ (x ≡ y)) ≡ p
+      second-pf = refl
+
+**Exercise:** When we manually form a proof invoking symmetry we simply write, for example, `sym p`
+and the implict arguments are inferred. We can actually do the same thing here! We were a bit dishonest above. 👂
+Rewrite `apply₁`, call it `apply₂, so that the ~try` block is a single, unparenthesised, `unify` call.
+
+**Exercise:** Extend the previous macro so that we can prove statements of the form `x ≡ x` regardless of what `p`
+proves. Aesthetics hint: `try_or-else_` doesn't need brackets in this case, at all.
+
+    macro
+      apply₃ : Term → Term → TC ⊤
+      apply₃ p goal = ⋯
+
+    yummah : {A : Set} {x y : A} (p : x ≡ y)  →  x ≡ y  ×  y ≡ x  ×  y ≡ y
+    yummah p = apply₃ p , apply₃ p , apply₃ p
+
+**Exercise:** Write the following seemingly silly macro.
+Hint: You cannot use the `≡-type-info` method directly, instead you must invoke `getType` beforehand.
+
+    ≡-type-info′ : Name → TC (Arg Term × Arg Term × Term × Term)
+    ≡-type-info′ = ⋯
+
+    macro
+      sumSides : Name → Term → TC ⊤
+      sumSides n goal = ⋯
+
+    _ : sumSides q ≡ x + 2 + y
+    _ = refl

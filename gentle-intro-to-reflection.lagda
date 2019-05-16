@@ -9,6 +9,7 @@
 #+AUTHOR: Musa Al-hassy
 #+EMAIL: alhassy@gmail.com
 #+STARTUP: indent
+#+PROPERTY: header-args :tangle tangled.agda :comments links
 
 #+CATEGORIES: Agda Org Emacs
 #+OPTIONS: html-postamble:nil toc:nil d:nil tag:nil
@@ -18,7 +19,7 @@
 # INCLUDE: ~/Dropbox/MyUnicodeSymbols.org
 
 * Abstract       :ignore:
-#+BEGIN_CENTER
+#+BEGIN_CENTER org
 *Abstract*
 #+END_CENTER
 
@@ -39,11 +40,12 @@ Examples include:
 + Wholesale derivation of singleton types for an example datatype,
   along with derivable proofs 💛 🎵
 + Automating proofs that are only ~refl~ /with/ pattern matching 🏄
-+ Remarks on what I could not do, possibly since it cannot be done :sob:
 + Discussion of C-style macros in Agda 🌵
 + Abstracting proofs patterns without syntactic overhead using macros 💪 🎼
++ Remarks on what I could not do, possibly since it cannot be done :sob:
 
 Everything here works with Agda version 2.6.0.
+#+TOC: headlines 2
 
 * Imports
 
@@ -510,7 +512,7 @@ postulate
   withNormalisation : ∀ {a} {A : Set a} → Bool → TC A → TC A
 #+END_EXAMPLE
 
-~TC~ computations, or “metaprograms”, can be run declaring them as macros or by
+~TC~ computations, or “metaprograms”, can be run by declaring them as macros or by
 unquoting. Let's begin with the former.
 
 * Unquoting ─Making new functions & types
@@ -1000,6 +1002,9 @@ Note we could look at the type of the goal, find the operator ~_⊕_~ and the un
 they need not be passed in. Later we will see how to reach into the goal type
 and pull pieces of it out for manipulation (•̀ᴗ•́)و
 
+It would have been ideal if we could have defined our macro without using ~foldn~;
+I could not figure out how to do that. 😧
+
 Before one abstracts a pattern into a macro, it's useful to have a few instances
 of the pattern beforehand. When abstracting, one may want to compare how we think
 versus how Agda's thinking. For example, you may have noticed that in the previous
@@ -1035,20 +1040,155 @@ It would be really nice to simply replace the last line by a macro, say ~inducti
 Unfortunately, for that I would need to obtain the name ~+-rid′~, which as far as I could
 tell is not possible with the current reflection mechanism.
 
-* COMMENT Two theorems from a proof of ~x + 2 ≡ y~
+* Our First Real Proof Tactic
 
-Suppose we have the following theorem ~p~.
+When we have a proof ~p : x ≡ y~ it is a nuisance to have to write ~sym p~ to prove ~y ≡ x~
+─we have to remember which ‘direction’ ~p~. Let's alleviate such a small burden, then use
+the tools here to alleviate a larger burden later; namely, rewriting subexpressions.
+
+Given ~p : x ≡ y~, we cannot simply yield ~def (quote sym) [ 𝓋𝓇𝒶 p ]~ since ~sym~ actually
+takes four arguments ─compare when we quoted ~_≡_~ earlier. Instead, we infer type of ~p~
+to be, say, ~quoteTerm (_≡_ {ℓ} {A} x y)~. Then we can correctly provide all the required arguments.
+
 #+BEGIN_SRC org-agda
-postulate
-  x y : ℕ
-  p   : x + 2 ≡ y
+≡-type-info : Term → TC (Arg Term × Arg Term × Term × Term)
+≡-type-info (def (quote _≡_) (𝓁 ∷ 𝒯 ∷ arg _ l ∷ arg _ r ∷ [])) = returnTC (𝓁 , 𝒯 , l , r)
+≡-type-info _ = typeError [ strErr "Term is not a ≡-type." ]
 #+END_SRC
 
-Let's make some helpful abbreviations.
+What if later we decided that we did not want a proof of ~x ≡ y~, but rather of ~x ≡ y~.
+In this case, the orginal proof ~p~ suffices. Rather than rewriting our proof term, our
+macro could try providing it if the symmetry application fails.
+
 #+BEGIN_SRC org-agda
-𝓁₀ = arg (arg-info hidden relevant) (def (quote Level.zero) [])
-𝒩 = arg (arg-info hidden relevant) (def (quote ℕ) [])
+{- Syntactic sugar for trying a computation, if it fails then try the other one -}
+try-fun : ∀ {a} {A : Set a} → TC A → TC A → TC A
+try-fun = catchTC
+
+syntax try-fun t f = try t or-else f
 #+END_SRC
+
+With the setup in hand, we can now form our macro:
+#+BEGIN_SRC org-agda
+macro
+  apply₁ : Term → Term → TC ⊤
+  apply₁ p goal = try (do τ ← inferType p
+                          𝓁 , 𝒯 , l , r ← ≡-type-info τ
+                          unify goal (def (quote sym) (𝓁 ∷ 𝒯 ∷ 𝒽𝓇𝒶 l ∷ 𝒽𝓇𝒶 r ∷ 𝓋𝓇𝒶 p ∷ [])))
+                  or-else
+                       unify goal p
+#+END_SRC
+
+For example,
+#+BEGIN_SRC org-agda
+postulate x y : ℕ
+postulate q : x + 2 ≡ y
+
+{- Same proof yields two theorems! (งಠ_ಠ)ง -}
+_ : y ≡ x + 2
+_ = apply₁ q
+
+_ : x + 2 ≡ y
+_ = apply₁ q
+#+END_SRC
+
+Let's furnish ourselves with the ability to inspect the /produced/ proofs.
+#+BEGIN_SRC org-agda
+{- Type annotation -}
+syntax has A a = a ∶ A -- “\:”
+
+has : ∀ (A : Set) (a : A) → A
+has A a = a
+#+END_SRC
+
+Let's try this on an arbitrary type:
+#+BEGIN_SRC org-agda
+woah : {A : Set} (x y : A) → x ≡ y → (y ≡ x) × (x ≡ y)
+woah x y p = apply₁ p , apply₁ p
+
+  where -- Each invocation generates a different proof, indeed:
+
+  first-pf : (apply₁ p ∶ (y ≡ x)) ≡ sym p
+  first-pf = refl
+
+  second-pf : (apply₁ p ∶ (x ≡ y)) ≡ p
+  second-pf = refl
+#+END_SRC
+
+*Exercise:* When we manually form a proof invoking symmetry we simply write, for example, ~sym p~
+and the implict arguments are inferred. We can actually do the same thing here! We were a bit dishonest above. 👂
+Rewrite ~apply₁~, call it ~apply₂, so that the ~try~ block is a single, unparenthesised, ~unify~ call.
+:Solution:
+#+BEGIN_SRC org-agda
+macro
+  apply₂ : Term → Term → TC ⊤
+  apply₂ p goal = try unify goal (def (quote sym)  (𝓋𝓇𝒶 p ∷ []))
+                  or-else unify goal p
+
+_ : {A : Set} (x y : A) → x ≡ y → (y ≡ x) × (x ≡ y)
+_ = λ x y p → apply₂ p , apply₂ p
+#+END_SRC
+:End:
+
+*Exercise:* Extend the previous macro so that we can prove statements of the form ~x ≡ x~ regardless of what ~p~
+proves. Aesthetics hint: ~try_or-else_~ doesn't need brackets in this case, at all.
+#+BEGIN_EXAMPLE org-agda
+macro
+  apply₃ : Term → Term → TC ⊤
+  apply₃ p goal = ⋯
+
+yummah : {A : Set} {x y : A} (p : x ≡ y)  →  x ≡ y  ×  y ≡ x  ×  y ≡ y
+yummah p = apply₃ p , apply₃ p , apply₃ p
+#+END_EXAMPLE
+:Solution:
+#+BEGIN_SRC org-agda
+macro
+  apply₃ : Term → Term → TC ⊤
+  apply₃ p goal = try unify goal (def (quote sym) (𝓋𝓇𝒶 p ∷ []))
+                  or-else try unify goal p
+                          or-else unify goal (con (quote refl) [])
+
+yummah : {A : Set} {x y : A} (p : x ≡ y)  →  x ≡ y  ×  y ≡ x  ×  y ≡ y
+yummah p = apply₃ p , apply₃ p , apply₃ p
+#+END_SRC
+:End:
+
+*Exercise:* Write the following seemingly silly macro.
+Hint: You cannot use the ~≡-type-info~ method directly, instead you must invoke ~getType~ beforehand.
+#+BEGIN_EXAMPLE org-agda
+≡-type-info′ : Name → TC (Arg Term × Arg Term × Term × Term)
+≡-type-info′ = ⋯
+
+macro
+  sumSides : Name → Term → TC ⊤
+  sumSides n goal = ⋯
+
+_ : sumSides q ≡ x + 2 + y
+_ = refl
+#+END_EXAMPLE
+:Solution:
+#+BEGIN_SRC org-agda
+≡-type-info′ : Name → TC (Arg Term × Arg Term × Term × Term)
+≡-type-info′ n = do τ ← getType n; ≡-type-info τ
+
+macro
+  sumSides : Name → Term → TC ⊤
+  sumSides n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal (def (quote _+_) (𝓋𝓇𝒶 l ∷ 𝓋𝓇𝒶 r ∷ []))
+
+_ : sumSides q ≡ x + 2 + y
+_ = refl
+#+END_SRC
+:End:
+
+* TODO COMMENT ideas
+
++ macros left and right for ≡-type.
+
++ flatten: Take a nested record hierarchy and produce a flattened telescope, since
+  records cannot be unquotes.
+
++ 2^50 * 3^313 ≡  3^313 * 2^50 is true by symmetry of *,
+  but may timeout if we try to prove things by refl.
 
 * COMMENT README
 
@@ -1065,7 +1205,7 @@ C-c C-c: evalute src block
 
      # The following can also be read as a [[https://alhassy.github.io/literate/][blog post]].
 
-     #+TOC: headlines 2
+     # TOC: headlines 2
      #+INCLUDE: gentle-intro-to-reflection.lagda
     ")
     (org-mode)
