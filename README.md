@@ -30,28 +30,32 @@ Everything here works with Agda version 2.6.0.
 This document is a literate Agda file written using
 the (poorly coded) [org-agda](https://alhassy.github.io/literate/) framework.
 
+A pure `.agda` file can be found [here](tangled.agda).
+
 
 # Table of Contents
 
-1.  [Imports](#org8a6bee6)
-2.  [Intro](#org1d3b34a)
-3.  [`NAME` ─Type of known identifiers](#org738b6c3)
-4.  [`Arg` ─Type of arguments](#orgdc0bd63)
-5.  [`Term` ─Type of terms](#orgc6b2e17)
-    1.  [Example: Simple Types](#org5700a51)
-    2.  [Example: Simple Terms](#org2f6f1e2)
-    3.  [A relationship between `quote` and `quoteTerm`](#org2d79562)
-    4.  [Example: Lambda Terms](#orge0e90dc)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#orge386693)
-7.  [Unquoting ─Making new functions & types](#org2cc1a63)
-8.  [Sidequest: Avoid tedious `refl` proofs](#org0648c80)
-9.  [Macros ─Abstracting Proof Patterns](#org7bb11b2)
-    1.  [C-style macros](#org38c80e5)
-    2.  [Tedious Repetitive Proofs No More!](#org0423d3a)
-10. [Our First Real Proof Tactic](#org9735e25)
+1.  [Imports](#org0d1d071)
+2.  [Introduction](#org28b14e5)
+3.  [`NAME` ─Type of known identifiers](#orgd0c86ed)
+4.  [`Arg` ─Type of arguments](#org8354554)
+5.  [`Term` ─Type of terms](#org084ee6e)
+    1.  [Example: Simple Types](#org809e540)
+    2.  [Example: Simple Terms](#orgda86958)
+    3.  [A relationship between `quote` and `quoteTerm`](#org2538d15)
+    4.  [Example: Lambda Terms](#org4922012)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#orgec9151c)
+7.  [Unquoting ─Making new functions & types](#org56cc3ec)
+8.  [Sidequest: Avoid tedious `refl` proofs](#org10b13a4)
+9.  [Macros ─Abstracting Proof Patterns](#org8fa9f4c)
+    1.  [C-style macros](#org4999d81)
+    2.  [Tedious Repetitive Proofs No More!](#org3ac32e5)
+10. [Our First Real Proof Tactic](#org419b316)
 
 
 # Imports
+
+First, some necessary imports:
 
     module gentle-intro-to-reflection where
 
@@ -70,7 +74,7 @@ the (poorly coded) [org-agda](https://alhassy.github.io/literate/) framework.
     open import Data.String as String
 
 
-# Intro
+# Introduction
 
 *Reflection* is the ability to convert program code into an abstract syntax,
 a data structure that can be manipulated like any other.
@@ -86,7 +90,8 @@ It is the aim of this tutorial to show how to get started with reflection in Agd
 To the best of my knowledge there is no up to date tutorial on this matter.
 
 There are three main types in Agda's reflection mechanism:
-`Name, Arg, Term`.
+`Name, Arg, Term`. We will learn about them with the aid of
+this following simple enumerated typed, as well as other standard types.
 
     data RGB : Set where
       Red Green Blue : RGB
@@ -964,7 +969,7 @@ With the setup in hand, we can now form our macro:
 		      or-else
 			   unify goal p
 
-For example,
+For example:
 
     postulate x y : ℕ
     postulate q : x + 2 ≡ y
@@ -978,13 +983,13 @@ For example,
 
 Let's furnish ourselves with the ability to inspect the *produced* proofs.
 
-\begin{code}
-{- Type annotation -}
-syntax has A a = a ∶ A -- “\:”
+    {- Type annotation -}
+    syntax has A a = a ∶ A
 
-has : ∀ (A : Set) (a : A) → A
-has A a = a
-\end{code}
+    has : ∀ (A : Set) (a : A) → A
+    has A a = a
+
+We are using the ‘ghost colon’ obtained with input `\:`.
 
 Let's try this on an arbitrary type:
 

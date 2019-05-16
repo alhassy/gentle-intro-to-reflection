@@ -3,18 +3,17 @@
 #
 # Need to ensure org-indent-mode is off when going to agda.
 
-#
 #+TITLE: A Gentle Introduction to Reflection in Agda
 #+DESCRIPTION: How can we use a single proof to prove two different theorems? One proof pattern, multiple invocations!
 #+AUTHOR: Musa Al-hassy
 #+EMAIL: alhassy@gmail.com
 #+STARTUP: indent
-#+PROPERTY: header-args :tangle tangled.agda :comments links
+#+PROPERTY: header-args :tangle tangled.agda :comments link
 
-#+CATEGORIES: Agda Org Emacs
+#+CATEGORIES: Agda MetaProgramming
 #+OPTIONS: html-postamble:nil toc:nil d:nil tag:nil
-#+IMAGE: ../assets/img/org_logo.png
-#+SOURCE: https://raw.githubusercontent.com/alhassy/org-agda-mode/master/literate.lagda
+# IMAGE: ../assets/img/org_logo.png
+# SOURCE: https://raw.githubusercontent.com/alhassy/org-agda-mode/master/literate.lagda
 
 # INCLUDE: ~/Dropbox/MyUnicodeSymbols.org
 
@@ -48,10 +47,16 @@ Everything here works with Agda version 2.6.0.
 This document is a literate Agda file written using
 the (poorly coded) [[https://alhassy.github.io/literate/][org-agda]] framework.
 
+A pure ~.agda~ file can be found [[file:tangled.agda][here]].
+
 #+TOC: headlines 2
 
 * Imports
+:PROPERTIES:
+:header-args: :tangle no
+:END:
 
+First, some necessary imports:
 #+BEGIN_SRC org-agda
 module gentle-intro-to-reflection where
 
@@ -70,7 +75,30 @@ open import Data.Char as Char
 open import Data.String as String
 #+END_SRC
 
-* Intro
+:TangledImports:
+Repetition is a bad idea, but doing this since org-agda isn't mature
+to support blocks with options, such as no tangling.
+
+#+BEGIN_SRC org-agda :tangle "tangled.agda"
+module tangled where
+
+import Level as Level
+open import Reflection hiding (_≟_ ; name)
+open import Relation.Binary.PropositionalEquality hiding ([_])
+open import Relation.Unary using (Decidable)
+open import Relation.Nullary
+
+open import Data.Unit
+open import Data.Nat
+open import Data.Bool
+open import Data.Product
+open import Data.List as List
+open import Data.Char as Char
+open import Data.String as String
+#+END_SRC
+:End:
+
+* Introduction
 
 /Reflection/ is the ability to convert program code into an abstract syntax,
 a data structure that can be manipulated like any other.
@@ -85,10 +113,9 @@ Reflection allows a more economical and disciplined approach.
 It is the aim of this tutorial to show how to get started with reflection in Agda.
 To the best of my knowledge there is no up to date tutorial on this matter.
 
-
 There are three main types in Agda's reflection mechanism:
-~Name, Arg, Term~.
-
+~Name, Arg, Term~. We will learn about them with the aid of
+this following simple enumerated typed, as well as other standard types.
 
 #+BEGIN_SRC org-agda
 data RGB : Set where
@@ -119,7 +146,9 @@ Let's show names:
 #+BEGIN_SRC org-agda
 _ : showName (quote _≡_) ≡ "Agda.Builtin.Equality._≡_"
 _ = refl
+#+END_SRC
 
+#+BEGIN_SRC org-agda :tangle nil
 _ : showName (quote Red) ≡ "gentle-intro-to-reflection.RGB.Red"
 _ = refl
 #+END_SRC
@@ -144,10 +173,14 @@ We can now easily obtain the module's name, then drop it from the data construct
 #+BEGIN_SRC org-agda
 module-name : String
 module-name = takeWhile (toDec (λ c → not (c Char.== '.'))) ⟨𝒮⟩ showName (quote Red)
+#+END_SRC
 
+#+BEGIN_SRC org-agda :tangle nil
 _ : module-name ≡ "gentle-intro-to-reflection"
 _ = refl
+#+END_SRC
 
+#+BEGIN_SRC org-agda
 strName : Name → String
 strName n = drop (1 + String.length module-name) ⟨𝒮⟩ showName n
 {- The “1 +” is for the “.” seperator in qualified names. -}
@@ -1111,7 +1144,7 @@ macro
                        unify goal p
 #+END_SRC
 
-For example,
+For example:
 #+BEGIN_SRC org-agda
 postulate x y : ℕ
 postulate q : x + 2 ≡ y
@@ -1125,14 +1158,14 @@ _ = apply₁ q
 #+END_SRC
 
 Let's furnish ourselves with the ability to inspect the /produced/ proofs.
-
-\begin{code}
+#+BEGIN_SRC org-agda
 {- Type annotation -}
-syntax has A a = a ∶ A -- “\:”
+syntax has A a = a ∶ A
 
 has : ∀ (A : Set) (a : A) → A
 has A a = a
-\end{code}
+#+END_SRC
+We are using the ‘ghost colon’ obtained with input ~\:~.
 
 Let's try this on an arbitrary type:
 #+BEGIN_SRC org-agda
@@ -1251,7 +1284,7 @@ _ = refl
 
 + deriving decidable equality
 
-#+BEGIN_SRC org-agda
+#+BEGIN_EXAMPLE org-agda
 data RGB : Set where
   Red Green Blue : RGB
 
@@ -1268,7 +1301,7 @@ Green ≟ Blue = no (λ ())
 Blue ≟ Red = no (λ ())
 Blue ≟ Green = no (λ ())
 Blue ≟ Blue = yes refl
-#+END_SRC
+#+END_EXAMPLE
 
 + theory combinators
 
@@ -1324,6 +1357,7 @@ https://github.com/alhassy/org-agda-mode
 (progn (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
 
 # Local Variables:
+# eval: (setq org-src-preserve-indentation 't)
 # eval: (visual-line-mode t)
 # eval: (load-file "~/org-agda-mode/org-agda-mode.el")
 # eval: (load-file "~/org-agda-mode/literate.el")
