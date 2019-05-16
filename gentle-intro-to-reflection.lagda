@@ -45,6 +45,9 @@ Examples include:
 + Remarks on what I could not do, possibly since it cannot be done :sob:
 
 Everything here works with Agda version 2.6.0.
+This document is a literate Agda file written using
+the (poorly coded) [[https://alhassy.github.io/literate/][org-agda]] framework.
+
 #+TOC: headlines 2
 
 * Imports
@@ -52,27 +55,19 @@ Everything here works with Agda version 2.6.0.
 #+BEGIN_SRC org-agda
 module gentle-intro-to-reflection where
 
-open import Relation.Binary.PropositionalEquality hiding ([_])
+import Level as Level
 open import Reflection hiding (_≟_ ; name)
-open import Data.List as List
+open import Relation.Binary.PropositionalEquality hiding ([_])
+open import Relation.Unary using (Decidable)
 open import Relation.Nullary
-
-open import Reflection
-
-open import Data.Nat
-open import Data.Bool
-open import Data.String as String
 
 open import Data.Unit
-
-import Level as Level
-
-open import Data.Char as Char
-open import Relation.Unary using (Decidable)
-
+open import Data.Nat
+open import Data.Bool
 open import Data.Product
-
-open import Relation.Nullary
+open import Data.List as List
+open import Data.Char as Char
+open import Data.String as String
 #+END_SRC
 
 * Intro
@@ -99,7 +94,7 @@ There are three main types in Agda's reflection mechanism:
 data RGB : Set where
   Red Green Blue : RGB
 #+END_SRC
-* ~NAME~ ─Type of known identifiers                         :forward_todo_link:
+* ~NAME~ ─Type of known identifiers
 
 ~Name~ is the type of quoting identifiers, Agda names.
 Elements of this type can be formed and pattern matched using
@@ -327,6 +322,10 @@ _ : ∀ {level : Level.Level}{Type : Set level} (x y : Type)
 
 _ = λ x y → refl
 #+END_SRC
+Remember that a De Bruijn index ~n~ refers to the lambda variable
+that is ~n+1~ lambdas away from its use site.
+For example, ~𝓋𝓇𝓋 1~ means starting at the ~⋯ ≡ ⋯~, go ~1+1~
+lambdas away to get the variable ~x~.
 
 We will demonstrate an example of a section, say
 ~≡_ "b"~, below when discussing lambda abstractions.
@@ -895,6 +894,39 @@ mysum y = y + first
 #+END_SRC
 :End:
 
+C-style macros ─unifying against a concretely quoted term─ are helpeful
+when learning reflection. For example, define a macro ~use~ that yields
+different strings according to the shape of their input ─this exercises
+increases famalrity with the ~Term~ type. Hint: Pattern match on the
+first argument ;-)
+#+BEGIN_EXAMPLE org-agda
+macro
+  use : Term → Term → TC ⊤
+  use = ⋯
+#+END_EXAMPLE
+:Solution:
+#+BEGIN_SRC org-agda
+macro
+  use : Term → Term → TC ⊤
+  use (def _ []) goal = unify goal (quoteTerm "Nice")
+  use v goal = unify goal  (quoteTerm "WoahThere")
+#+END_SRC
+:End:
+#+BEGIN_SRC org-agda
+{- Fully defined, no arguments. -}
+
+2+2≈4 : 2 + 2 ≡ 4
+2+2≈4 = refl
+
+_ : use 2+2≈4 ≡ "Nice"
+_ = refl
+
+{- ‘p’ has arguments. -}
+
+_ : {x y : ℕ} {p : x ≡ y} → use p ≡ "WoahThere"
+_ = refl
+#+END_SRC
+
 ** Tedious Repetitive Proofs No More!
 Suppose we wish to prove that addition, multiplication, and exponentiation
 have right units 0, 1, and 1 respectively. We obtain the following nearly identical
@@ -1093,13 +1125,14 @@ _ = apply₁ q
 #+END_SRC
 
 Let's furnish ourselves with the ability to inspect the /produced/ proofs.
-#+BEGIN_SRC org-agda
+
+\begin{code}
 {- Type annotation -}
 syntax has A a = a ∶ A -- “\:”
 
 has : ∀ (A : Set) (a : A) → A
 has A a = a
-#+END_SRC
+\end{code}
 
 Let's try this on an arbitrary type:
 #+BEGIN_SRC org-agda
@@ -1113,6 +1146,16 @@ woah x y p = apply₁ p , apply₁ p
 
   second-pf : (apply₁ p ∶ (x ≡ y)) ≡ p
   second-pf = refl
+#+END_SRC
+
+It is interesting to note that on non ≡-terms, ~apply₁~ is just a no-op.
+Why might this be the case?
+#+BEGIN_SRC org-agda
+_ : ∀ {A : Set} {x : A} → apply₁ x ≡ x
+_ = refl
+
+_ : apply₁ "huh" ≡ "huh"
+_ = refl
 #+END_SRC
 
 *Exercise:* When we manually form a proof invoking symmetry we simply write, for example, ~sym p~
@@ -1180,9 +1223,66 @@ _ = refl
 #+END_SRC
 :End:
 
+*Exercise:* Write two macros, ~left~ and ~right~, such that
+~sumSides q  ≡ left q + right q~, where ~q~ is a known name.
+These two macros provide the left and right hand sides of the
+≡-term they are given.
+:Solution:
+#+BEGIN_SRC org-agda
+macro
+  left : Name → Term → TC ⊤
+  left n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal l
+
+  right : Name → Term → TC ⊤
+  right n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal r
+
+_ : sumSides q  ≡  left q + right q
+_ = refl
+
+_ : left q ≡ x + 2
+_ = refl
+
+_ : right q ≡ y
+_ = refl
+#+END_SRC
+:End:
+
 * TODO COMMENT ideas
 
-+ macros left and right for ≡-type.
++ deriving decidable equality
+
+#+BEGIN_SRC org-agda
+data RGB : Set where
+  Red Green Blue : RGB
+
+_≟_ : (p q : RGB) → Dec (p ≡ q)
+
+Red ≟ Red = yes refl
+Red ≟ Green = no (λ ())
+Red ≟ Blue = no (λ ())
+
+Green ≟ Red = no (λ ())
+Green ≟ Green = yes refl
+Green ≟ Blue = no (λ ())
+
+Blue ≟ Red = no (λ ())
+Blue ≟ Green = no (λ ())
+Blue ≟ Blue = yes refl
+#+END_SRC
+
++ theory combinators
+
+#+BEGIN_SRC org-agda
+macro
+    plus-to-times : Term → Term → TC ⊤
+    plus-to-times (def (quote _+_) (a ∷ b ∷ [])) hole = unify hole (def (quote _*_) (a ∷ b ∷ []))
+    plus-to-times v hole = unify hole v
+
+thm : (a b : ℕ) → plus-to-times (a + b) ≡ a * b
+thm a b = refl
+
+#+END_SRC
+
 
 + flatten: Take a nested record hierarchy and produce a flattened telescope, since
   records cannot be unquotes.

@@ -27,53 +27,47 @@ Examples include:
 -   Remarks on what I could not do, possibly since it cannot be done :sob:
 
 Everything here works with Agda version 2.6.0.
+This document is a literate Agda file written using
+the (poorly coded) [org-agda](https://alhassy.github.io/literate/) framework.
 
 
 # Table of Contents
 
-1.  [Imports](#org748b976)
-2.  [Intro](#org3a01b18)
-3.  [`NAME` ─Type of known identifiers](#orgff24739):forward_todo_link:
-4.  [`Arg` ─Type of arguments](#org5772f15)
-5.  [`Term` ─Type of terms](#org94750ee)
-    1.  [Example: Simple Types](#org4af9ce7)
-    2.  [Example: Simple Terms](#org71e9696)
-    3.  [A relationship between `quote` and `quoteTerm`](#org35279db)
-    4.  [Example: Lambda Terms](#orgeaa4a9e)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#org17fcba9)
-7.  [Unquoting ─Making new functions & types](#orgdc58220)
-8.  [Sidequest: Avoid tedious `refl` proofs](#org9b17e86)
-9.  [Macros ─Abstracting Proof Patterns](#org3b4a0ee)
-    1.  [C-style macros](#org30ab3b8)
-    2.  [Tedious Repetitive Proofs No More!](#org2d6c332)
-10. [Our First Real Proof Tactic](#org2370ee7)
+1.  [Imports](#org8a6bee6)
+2.  [Intro](#org1d3b34a)
+3.  [`NAME` ─Type of known identifiers](#org738b6c3)
+4.  [`Arg` ─Type of arguments](#orgdc0bd63)
+5.  [`Term` ─Type of terms](#orgc6b2e17)
+    1.  [Example: Simple Types](#org5700a51)
+    2.  [Example: Simple Terms](#org2f6f1e2)
+    3.  [A relationship between `quote` and `quoteTerm`](#org2d79562)
+    4.  [Example: Lambda Terms](#orge0e90dc)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#orge386693)
+7.  [Unquoting ─Making new functions & types](#org2cc1a63)
+8.  [Sidequest: Avoid tedious `refl` proofs](#org0648c80)
+9.  [Macros ─Abstracting Proof Patterns](#org7bb11b2)
+    1.  [C-style macros](#org38c80e5)
+    2.  [Tedious Repetitive Proofs No More!](#org0423d3a)
+10. [Our First Real Proof Tactic](#org9735e25)
 
 
 # Imports
 
     module gentle-intro-to-reflection where
 
-    open import Relation.Binary.PropositionalEquality hiding ([_])
+    import Level as Level
     open import Reflection hiding (_≟_ ; name)
-    open import Data.List as List
+    open import Relation.Binary.PropositionalEquality hiding ([_])
+    open import Relation.Unary using (Decidable)
     open import Relation.Nullary
-
-    open import Reflection
-
-    open import Data.Nat
-    open import Data.Bool
-    open import Data.String as String
 
     open import Data.Unit
-
-    import Level as Level
-
-    open import Data.Char as Char
-    open import Relation.Unary using (Decidable)
-
+    open import Data.Nat
+    open import Data.Bool
     open import Data.Product
-
-    open import Relation.Nullary
+    open import Data.List as List
+    open import Data.Char as Char
+    open import Data.String as String
 
 
 # Intro
@@ -98,7 +92,7 @@ There are three main types in Agda's reflection mechanism:
       Red Green Blue : RGB
 
 
-# `NAME` ─Type of known identifiers     :forward_todo_link:
+# `NAME` ─Type of known identifiers
 
 `Name` is the type of quoting identifiers, Agda names.
 Elements of this type can be formed and pattern matched using
@@ -316,6 +310,11 @@ Here is a more polymorphic example:
 	       (𝒽𝓇𝓋 3 [] ∷ 𝒽𝓇𝓋 2 [] ∷ 𝓋𝓇𝓋 1 [] ∷ 𝓋𝓇𝓋 0 [] ∷ [])
 
     _ = λ x y → refl
+
+Remember that a De Bruijn index `n` refers to the lambda variable
+that is `n+1` lambdas away from its use site.
+For example, `𝓋𝓇𝓋 1` means starting at the `⋯ ≡ ⋯`, go `1+1`
+lambdas away to get the variable `x`.
 
 We will demonstrate an example of a section, say
 `≡_ "b"`, below when discussing lambda abstractions.
@@ -785,6 +784,29 @@ without mentioning them :b
     mysum : ( {x} y : ℕ) → ℕ
     mysum y = y + first
 
+C-style macros ─unifying against a concretely quoted term─ are helpeful
+when learning reflection. For example, define a macro `use` that yields
+different strings according to the shape of their input ─this exercises
+increases famalrity with the `Term` type. Hint: Pattern match on the
+first argument ;-)
+
+    macro
+      use : Term → Term → TC ⊤
+      use = ⋯
+
+    {- Fully defined, no arguments. -}
+
+    2+2≈4 : 2 + 2 ≡ 4
+    2+2≈4 = refl
+
+    _ : use 2+2≈4 ≡ "Nice"
+    _ = refl
+
+    {- ‘p’ has arguments. -}
+
+    _ : {x y : ℕ} {p : x ≡ y} → use p ≡ "WoahThere"
+    _ = refl
+
 
 ## Tedious Repetitive Proofs No More!
 
@@ -956,11 +978,13 @@ For example,
 
 Let's furnish ourselves with the ability to inspect the *produced* proofs.
 
-    {- Type annotation -}
-    syntax has A a = a ∶ A -- “\:”
+\begin{code}
+{- Type annotation -}
+syntax has A a = a ∶ A -- “\:”
 
-    has : ∀ (A : Set) (a : A) → A
-    has A a = a
+has : ∀ (A : Set) (a : A) → A
+has A a = a
+\end{code}
 
 Let's try this on an arbitrary type:
 
@@ -974,6 +998,15 @@ Let's try this on an arbitrary type:
 
       second-pf : (apply₁ p ∶ (x ≡ y)) ≡ p
       second-pf = refl
+
+It is interesting to note that on non ≡-terms, `apply₁` is just a no-op.
+Why might this be the case?
+
+    _ : ∀ {A : Set} {x : A} → apply₁ x ≡ x
+    _ = refl
+
+    _ : apply₁ "huh" ≡ "huh"
+    _ = refl
 
 **Exercise:** When we manually form a proof invoking symmetry we simply write, for example, `sym p`
 and the implict arguments are inferred. We can actually do the same thing here! We were a bit dishonest above. 👂
@@ -1001,3 +1034,8 @@ Hint: You cannot use the `≡-type-info` method directly, instead you must invok
 
     _ : sumSides q ≡ x + 2 + y
     _ = refl
+
+**Exercise:** Write two macros, `left` and `right`, such that
+`sumSides q  ≡ left q + right q`, where `q` is a known name.
+These two macros provide the left and right hand sides of the
+≡-term they are given.
