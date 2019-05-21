@@ -7,7 +7,7 @@ open import Relation.Unary using (Decidable)
 open import Relation.Nullary
 
 open import Data.Unit
-open import Data.Nat
+open import Data.Nat  as Nat hiding (_⊓_)
 open import Data.Bool
 open import Data.Product
 open import Data.List as List
@@ -63,14 +63,12 @@ _ = refl
 {- ~NAME~ ─Type of known identifiers:7 ends here -}
 
 {- [[file:~/reflection/gentle-intro-to-reflection.lagda::*~Arg~%20%E2%94%80Type%20of%20arguments][~Arg~ ─Type of arguments:1]] -}
-variable {A} : Set
-
 {- 𝓋isible 𝓇elevant 𝒶rgument -}
-𝓋𝓇𝒶 : A → Arg A
+𝓋𝓇𝒶 : {A : Set} → A → Arg A
 𝓋𝓇𝒶 = arg (arg-info visible relevant)
 
 {- 𝒽idden 𝓇elevant 𝒶rgument -}
-𝒽𝓇𝒶 : A → Arg A
+𝒽𝓇𝒶 : {A : Set} → A → Arg A
 𝒽𝓇𝒶 = arg (arg-info hidden relevant)
 {- ~Arg~ ─Type of arguments:1 ends here -}
 
@@ -686,6 +684,7 @@ macro
   ≡-head : Term → Term → TC ⊤
   ≡-head p goal = do τ ← inferType p
                      _ , _ , l , _ ← ≡-type-info τ
+                     {- Could have used ‘r’ here as well. -}
                      unify goal ($-head l)
 
 _ : quoteTerm (left 𝓅𝒻) ≡ def (quote 𝒽) [ 𝓋𝓇𝒶 (quoteTerm 𝒹) ]
@@ -723,3 +722,151 @@ _ : ∀ {x y : ℕ} {f g : ℕ → ℕ} (p : x ≡ y)
     -- →  f x ≡ g y {- “apply₄ p” now has a unification error ^_^ -}
 _ = λ p → apply₄ p
 {- Heuristic for Writing a Macro:3 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:1]] -}
+open import Data.Nat.Properties
+{- +-suc : ∀ m n → m + suc n ≡ suc (m + n) -}
+
+test₀ : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+test₀ {m} {n} {k} = cong (k +_) (+-suc m n)
+{- What about somewhere deep within a subexpression?:1 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:2]] -}
+postulate 𝒳 : ℕ
+postulate 𝒢 : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
+
+𝒮𝒳 : Arg Term
+𝒮𝒳 = 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (quoteTerm 𝒳) ])
+
+𝒢ˡ 𝒢ʳ : Term
+𝒢ˡ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝒮𝒳 ∷ [])) ∷ [])
+𝒢ʳ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ [])) ]) ∷ [])
+{- What about somewhere deep within a subexpression?:2 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:3]] -}
+{- Should definitily be in the standard library -}
+⌊_⌋ : ∀ {a} {A : Set a} → Dec A → Bool
+⌊ yes p ⌋ = true
+⌊ no ¬p ⌋ = false
+
+import Agda.Builtin.Reflection as Builtin
+
+_$-≟_ : Term → Term → Bool
+con c args $-≟ con c′ args′ = Builtin.primQNameEquality c c′
+def f args $-≟ def f′ args′ = Builtin.primQNameEquality f f′
+var x args $-≟ var x′ args′ = ⌊ x Nat.≟ x′ ⌋
+_ $-≟ _ = false
+
+{- Only gets heads and as much common args, not anywhere deep. :'( -}
+infix 5 _⊓_
+{-# TERMINATING #-} {- Fix this by adding fuel (con c args) ≔ 1 + length args -}
+_⊓_ : Term → Term → Term
+l ⊓ r with l $-≟ r | l | r
+...| false | x | y = unknown
+...| true | var f args | var f′ args′ = var f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+...| true | con f args | con f′ args′ = con f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+...| true | def f args | def f′ args′ = def f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+...| true | ll | _ = ll {- Left biased; using ‘unknown’ does not ensure idempotence. -}
+{- What about somewhere deep within a subexpression?:3 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:4]] -}
+_ : 𝒢ˡ ⊓ 𝒢ʳ ≡ def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 unknown ∷ [])
+_ = refl
+
+{- test using argument function 𝒶 and argument number X -}
+_ : {X : ℕ} {𝒶 : ℕ → ℕ}
+  →
+    let gl = quoteTerm (𝒶 X + (X * 𝒶 X + 𝒶 X))
+        gr = quoteTerm (𝒶 X + 𝒶 (X * 𝒶 X + X))
+    in gl ⊓ gr ≡ def (quote _+_) (𝓋𝓇𝒶 (var 0 [ 𝓋𝓇𝒶 (var 1 []) ]) ∷ 𝓋𝓇𝒶 unknown ∷ [])
+_ = refl
+{- What about somewhere deep within a subexpression?:4 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:5]] -}
+{- ‘unknown’ goes to a variable, a De Bruijn index -}
+unknown-elim : ℕ → List (Arg Term) → List (Arg Term)
+unknown-elim n [] = []
+unknown-elim n (arg i unknown ∷ xs) = arg i (var n []) ∷ unknown-elim (n + 1) xs
+unknown-elim n (arg i (var x args) ∷ xs) = arg i (var (n + suc x) args) ∷ unknown-elim n xs
+unknown-elim n (arg i x ∷ xs)       = arg i x ∷ unknown-elim n xs
+{- Essentially we want: body(unknownᵢ)  ⇒  λ _ → body(var 0)
+   However, now all “var 0” references in “body” refer to the wrong argument;
+   they now refer to “one more lambda away than before”. -}
+
+unknown-count : List (Arg Term) → ℕ
+unknown-count [] = 0
+unknown-count (arg i unknown ∷ xs) = 1 + unknown-count xs
+unknown-count (arg i _ ∷ xs) = unknown-count xs
+
+unknown-λ : ℕ → Term → Term
+unknown-λ zero body = body
+unknown-λ (suc n) body = unknown-λ n (λ𝓋 "section" ↦ body)
+
+{- Replace ‘unknown’ with sections -}
+patch : Term → Term
+patch it@(def f args) = unknown-λ (unknown-count args) (def f (unknown-elim 0 args))
+patch it@(var f args) = unknown-λ (unknown-count args) (var f (unknown-elim 0 args))
+patch it@(con f args) = unknown-λ (unknown-count args) (con f (unknown-elim 0 args))
+patch t = t
+{- What about somewhere deep within a subexpression?:5 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:6]] -}
+macro
+  spine : Term → Term → TC ⊤
+  spine p goal
+    = do τ ← inferType p
+         _ , _ , l , r ← ≡-type-info τ
+         unify goal (patch (l ⊓ r))
+{- What about somewhere deep within a subexpression?:6 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:7]] -}
+_ : spine 𝒢 ≡ suc 𝒳 +_
+_ = refl
+
+module testing-postulated-functions where
+  postulate 𝒶 : ℕ → ℕ
+  postulate _𝒷_ : ℕ → ℕ → ℕ
+  postulate 𝓰 : 𝒶 𝒳  𝒷  𝒳  ≡  𝒶 𝒳  𝒷  𝒶 𝓍
+
+  _ : spine 𝓰 ≡ (𝒶 𝒳 𝒷_)
+  _ = refl
+
+_ : {X : ℕ} {G : suc X + (X * suc X + suc X)  ≡  suc X + suc (X * suc X + X)}
+  → quoteTerm G ≡ var 0 []
+_ = refl
+{- What about somewhere deep within a subexpression?:7 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:8]] -}
+_ : spine 𝓅𝒻 ≡ 𝒽
+_ = refl
+
+_ : spine 𝓅𝒻′ ≡ suc
+_ = refl
+
+_ : ∀ {g : ℕ → ℕ} {pf″ : g 𝒹 ≡ 𝓮} → spine pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r : ℕ} {g : ℕ → ℕ} {pf″ : g l ≡ r} → spine pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r s : ℕ} {p : l + r ≡ s} → spine p ≡ _+_
+_ = refl
+{- What about somewhere deep within a subexpression?:8 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:9]] -}
+macro
+  apply₅ : Term → Term → TC ⊤
+  apply₅ p hole
+    = do τ ← inferType hole
+         _ , _ , l , r ← ≡-type-info τ
+         unify hole ((def (quote cong)
+              (𝓋𝓇𝒶 (patch (l ⊓ r)) ∷ 𝓋𝓇𝒶 p ∷ [])))
+{- What about somewhere deep within a subexpression?:9 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*What%20about%20somewhere%20deep%20within%20a%20subexpression?][What about somewhere deep within a subexpression?:10]] -}
+_ : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
+_ = apply₅ (+-suc (𝒳 * suc 𝒳) 𝒳)
+
+test : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+test {m} {n} {k} = apply₅ (+-suc m n)
+{- What about somewhere deep within a subexpression?:10 ends here -}

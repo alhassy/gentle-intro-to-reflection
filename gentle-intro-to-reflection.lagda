@@ -69,7 +69,7 @@ open import Relation.Unary using (Decidable)
 open import Relation.Nullary
 
 open import Data.Unit
-open import Data.Nat as Nat
+open import Data.Nat as Nat hiding (_⊓_)
 open import Data.Bool
 open import Data.Product
 open import Data.List as List
@@ -91,7 +91,7 @@ open import Relation.Unary using (Decidable)
 open import Relation.Nullary
 
 open import Data.Unit
-open import Data.Nat
+open import Data.Nat  as Nat hiding (_⊓_)
 open import Data.Bool
 open import Data.Product
 open import Data.List as List
@@ -219,14 +219,12 @@ data Arg (A : Set) : Set where
 
 For example, let's create some helpers that make arguments of any given type ~A~:
 #+BEGIN_SRC org-agda
-variable {A} : Set
-
 {- 𝓋isible 𝓇elevant 𝒶rgument -}
-𝓋𝓇𝒶 : A → Arg A
+𝓋𝓇𝒶 : {A : Set} → A → Arg A
 𝓋𝓇𝒶 = arg (arg-info visible relevant)
 
 {- 𝒽idden 𝓇elevant 𝒶rgument -}
-𝒽𝓇𝒶 : A → Arg A
+𝒽𝓇𝒶 : {A : Set} → A → Arg A
 𝒽𝓇𝒶 = arg (arg-info hidden relevant)
 #+END_SRC
 
@@ -1339,6 +1337,7 @@ macro
   ≡-head : Term → Term → TC ⊤
   ≡-head p goal = do τ ← inferType p
                      _ , _ , l , _ ← ≡-type-info τ
+                     {- Could have used ‘r’ here as well. -}
                      unify goal ($-head l)
 
 _ : quoteTerm (left 𝓅𝒻) ≡ def (quote 𝒽) [ 𝓋𝓇𝒶 (quoteTerm 𝒹) ]
@@ -1383,9 +1382,9 @@ _ : ∀ {x y : ℕ} {f g : ℕ → ℕ} (p : x ≡ y)
 _ = λ p → apply₄ p
 #+END_SRC
 
-* COMMENT What about somewhere deep within a subexpression?
+* What about somewhere deep within a subexpression?
 
-Consdier,
+Consider,
 #+BEGIN_EXAMPLE org-agda
              suc X + (X * suc X + suc X)
            ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
@@ -1393,22 +1392,36 @@ Consdier,
 #+END_EXAMPLE
 Can we find ~(λ it → suc X + it)~ mechanically ;-)
 
+Using the same refinement apporach outlined earlier, we begin with the following
+working code then slowly, one piece at a time, replace the whole thing with an
+~unquote (unify (quoteTerm ⋯workingCodeHere⋯))~. Then we push the ~quoteTerm~
+further in as much as possible and construct the helper functions to make
+this transation transpire.
+#+BEGIN_SRC org-agda
+open import Data.Nat.Properties
+{- +-suc : ∀ m n → m + suc n ≡ suc (m + n) -}
 
-f x y (z  z₁  z₂  z₃) w
-f x y (z′ z₁′ z₂′ z₃′) w
+test₀ : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+test₀ {m} {n} {k} = cong (k +_) (+-suc m n)
+#+END_SRC
 
-\begin{code}
+Let's follow the aforementioned approach by starting out with some postulates.
+#+BEGIN_SRC org-agda
 postulate 𝒳 : ℕ
 postulate 𝒢 : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
 
-{-# TERMINATING #-}
-$-context : Term → Term
-$-context (var v args) = var v (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
-$-context (con c args) = con c (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
-$-context (def f args) = def f (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
-$-context (pat-lam cs args) = pat-lam cs (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
-$-context t = t
+𝒮𝒳 : Arg Term
+𝒮𝒳 = 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (quoteTerm 𝒳) ])
 
+𝒢ˡ 𝒢ʳ : Term
+𝒢ˡ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝒮𝒳 ∷ [])) ∷ [])
+𝒢ʳ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ [])) ]) ∷ [])
+#+END_SRC
+
+It seems that the left and right sides of 𝒢 “meet” at ~def (quote _+_) (𝒮𝒳 ∷ [])~:
+We check the equality of the quoted operator, ~_+_~, then recursively check the arguments.
+Whence the following naive algorithm:
+#+BEGIN_SRC org-agda
 {- Should definitily be in the standard library -}
 ⌊_⌋ : ∀ {a} {A : Set a} → Dec A → Bool
 ⌊ yes p ⌋ = true
@@ -1422,30 +1435,148 @@ def f args $-≟ def f′ args′ = Builtin.primQNameEquality f f′
 var x args $-≟ var x′ args′ = ⌊ x Nat.≟ x′ ⌋
 _ $-≟ _ = false
 
-$-align : List (Arg Term) → List (Arg Term) → List (Arg Term)
-$-align [] ys = []
-$-align (x ∷ xs) [] = []
-$-align ( l@(arg i x) ∷ xs) (r@(arg j y) ∷ ys) with x $-≟ y
-... | false = {!!}
-... | true = {!!}
+{- Only gets heads and as much common args, not anywhere deep. :'( -}
+infix 5 _⊓_
+{-# TERMINATING #-} {- Fix this by adding fuel (con c args) ≔ 1 + length args -}
+_⊓_ : Term → Term → Term
+l ⊓ r with l $-≟ r | l | r
+...| false | x | y = unknown
+...| true | var f args | var f′ args′ = var f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+...| true | con f args | con f′ args′ = con f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+...| true | def f args | def f′ args′ = def f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+...| true | ll | _ = ll {- Left biased; using ‘unknown’ does not ensure idempotence. -}
+#+END_SRC
 
+# You would think the ~var~ and ~con~ cases /should/ also be considered, but they're not. Why is that?
+#
+The bodies have names involving ~!!~, this is to indicate a location of improvement.
+Indeed, this naive algorithm ignores visibility and relevance of arguments ─far from ideal.
+
+Joyously this works!  😂
+#+BEGIN_SRC org-agda
+_ : 𝒢ˡ ⊓ 𝒢ʳ ≡ def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 unknown ∷ [])
+_ = refl
+
+{- test using argument function 𝒶 and argument number X -}
+_ : {X : ℕ} {𝒶 : ℕ → ℕ}
+  →
+    let gl = quoteTerm (𝒶 X + (X * 𝒶 X + 𝒶 X))
+        gr = quoteTerm (𝒶 X + 𝒶 (X * 𝒶 X + X))
+    in gl ⊓ gr ≡ def (quote _+_) (𝓋𝓇𝒶 (var 0 [ 𝓋𝓇𝒶 (var 1 []) ]) ∷ 𝓋𝓇𝒶 unknown ∷ [])
+_ = refl
+#+END_SRC
+The ~unknown~ terms are far from desirable ─we ought to replace them with sections; i.e., an anonoymous lambda.
+My naive algorithm to achieve a section from a term containing ‘unknown’s is as follows:
+1. Replace every ~unknown~ with a De Bruijn index.
+2. Then, find out how many unknowns there are, and for each, stick an anonoymous lambda at the front.
+   + Sticking a lambda at the front breaks existing De Bruijn indices, so increment them for each lambda.
+
+There is clear inefficiency here, but I'm not aiming to be efficient, just believable to some degree.
+
+#+BEGIN_SRC org-agda
+{- ‘unknown’ goes to a variable, a De Bruijn index -}
+unknown-elim : ℕ → List (Arg Term) → List (Arg Term)
+unknown-elim n [] = []
+unknown-elim n (arg i unknown ∷ xs) = arg i (var n []) ∷ unknown-elim (n + 1) xs
+unknown-elim n (arg i (var x args) ∷ xs) = arg i (var (n + suc x) args) ∷ unknown-elim n xs
+unknown-elim n (arg i x ∷ xs)       = arg i x ∷ unknown-elim n xs
+{- Essentially we want: body(unknownᵢ)  ⇒  λ _ → body(var 0)
+   However, now all “var 0” references in “body” refer to the wrong argument;
+   they now refer to “one more lambda away than before”. -}
+
+unknown-count : List (Arg Term) → ℕ
+unknown-count [] = 0
+unknown-count (arg i unknown ∷ xs) = 1 + unknown-count xs
+unknown-count (arg i _ ∷ xs) = unknown-count xs
+
+unknown-λ : ℕ → Term → Term
+unknown-λ zero body = body
+unknown-λ (suc n) body = unknown-λ n (λ𝓋 "section" ↦ body)
+
+{- Replace ‘unknown’ with sections -}
+patch : Term → Term
+patch it@(def f args) = unknown-λ (unknown-count args) (def f (unknown-elim 0 args))
+patch it@(var f args) = unknown-λ (unknown-count args) (var f (unknown-elim 0 args))
+patch it@(con f args) = unknown-λ (unknown-count args) (con f (unknown-elim 0 args))
+patch t = t
+#+END_SRC
+
+Putting meet, ~_⊓_~, and this ~patch~ together into a macro:
+#+BEGIN_SRC org-agda
 macro
-  ≡-context : Term → Term → TC ⊤
-  ≡-context p goal
+  spine : Term → Term → TC ⊤
+  spine p goal
     = do τ ← inferType p
          _ , _ , l , r ← ≡-type-info τ
-         unify goal ($-head l) -- (λ𝓋 "x" ↦ λ𝓋 "y" ↦ var 0 [])
+         unify goal (patch (l ⊓ r))
+#+END_SRC
 
-{-
-    = try (do τ ← inferType goal
-              _ , _ , l , r ← ≡-type-info τ
-              unify goal ((def (quote cong) (𝓋𝓇𝒶 ($-head l) ∷ 𝓋𝓇𝒶 p ∷ []))))
-      or-else unify goal p
--}
-
-_ : _≡_ {Level.zero} {ℕ → ℕ → ℕ} (≡-context 𝒢) _+_
+The expected tests pass ─so much joy :joy:
+#+BEGIN_SRC org-agda
+_ : spine 𝒢 ≡ suc 𝒳 +_
 _ = refl
-\end{code}
+
+module testing-postulated-functions where
+  postulate 𝒶 : ℕ → ℕ
+  postulate _𝒷_ : ℕ → ℕ → ℕ
+  postulate 𝓰 : 𝒶 𝒳  𝒷  𝒳  ≡  𝒶 𝒳  𝒷  𝒶 𝓍
+
+  _ : spine 𝓰 ≡ (𝒶 𝒳 𝒷_)
+  _ = refl
+
+_ : {X : ℕ} {G : suc X + (X * suc X + suc X)  ≡  suc X + suc (X * suc X + X)}
+  → quoteTerm G ≡ var 0 []
+_ = refl
+#+END_SRC
+
+The tests for ~≡-head~ still go through using ~spine~
+which can thus be thought of as a generalisation ;-)
+:OlderTests:
+#+BEGIN_SRC org-agda
+_ : spine 𝓅𝒻 ≡ 𝒽
+_ = refl
+
+_ : spine 𝓅𝒻′ ≡ suc
+_ = refl
+
+_ : ∀ {g : ℕ → ℕ} {pf″ : g 𝒹 ≡ 𝓮} → spine pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r : ℕ} {g : ℕ → ℕ} {pf″ : g l ≡ r} → spine pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r s : ℕ} {p : l + r ≡ s} → spine p ≡ _+_
+_ = refl
+#+END_SRC
+:End:
+
+Now the original problem is dealt with as a macro:
+#+BEGIN_SRC org-agda
+macro
+  apply₅ : Term → Term → TC ⊤
+  apply₅ p hole
+    = do τ ← inferType hole
+         _ , _ , l , r ← ≡-type-info τ
+         unify hole ((def (quote cong)
+              (𝓋𝓇𝒶 (patch (l ⊓ r)) ∷ 𝓋𝓇𝒶 p ∷ [])))
+#+END_SRC
+
+Curious, why in the following tests we cannot simply use ~+-suc _ _~?
+#+BEGIN_SRC org-agda
+_ : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
+_ = apply₅ (+-suc (𝒳 * suc 𝒳) 𝒳)
+
+test : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+test {m} {n} {k} = apply₅ (+-suc m n)
+#+END_SRC
+
+This is super neat stuff ^_^
+
+* TODO COMMENT “test” macro
+
+test t ↦   _ : t; _ = refl
+
+Agda has no support for ,@list style &rest args like in lisp :'(
 
 * COMMENT nope, not here yet
 Let's use this. Below is an extraction of one of the first assignments for a class
@@ -1534,9 +1665,54 @@ module ≡-Reasoning-with-tactics {a} {A : Set a} where
 open import Relation.Binary.PropositionalEquality using () renaming (refl to definition-chasing)
 open import Data.Nat.Properties
 
+module my/≡-Reasoning where -- {a} {A : Set a} where
+
+  private
+    a = Level.zero
+    A = ℕ
+
+  infix  3 _∎
+  infixr 2 _≡⟨⟩_ _≡⟨_⟩_ _≡˘⟨_⟩_
+  infix  1 begin_
+
+  begin_ : ∀{x y : A} → x ≡ y → x ≡ y
+  begin_ x≡y = x≡y
+
+  _≡⟨⟩_ : ∀ (x {y} : A) → x ≡ y → x ≡ y
+  _ ≡⟨⟩ x≡y = x≡y
+
+  _≡⟨_⟩_ : ∀ (x {y z} : A) → x ≡ y → y ≡ z → x ≡ z
+  _ ≡⟨ x≡y ⟩ y≡z = trans x≡y y≡z
+
+  infixr 2 _≡⟨_⟩′_
+  macro
+    _≡⟨_⟩′_ : ∀ (x {y} : A) (x≡y : x ≡ y) (y≡z : Term) → Term → TC ⊤
+    _≡⟨_⟩′_ xx x≡y y≡z hole
+      = do τ ← inferType y≡z
+           _ , _ , `y , `z ← ≡-type-info τ
+           -- y ← unquoteTC {Level.zero} {ℕ} l
+           -- x≈y ← unquoteTC {Level.zero} {xx ≡ y} x≡y
+           x≈y ← quoteTC x≡y
+           `x  ← quoteTC xx
+           unify hole (def (quote trans) (
+                   𝒽𝓇𝒶 (quoteTerm Level.zero)
+                 ∷ 𝒽𝓇𝒶 (quoteTerm ℕ)
+                 ∷ 𝒽𝓇𝒶 `x
+                 ∷ 𝒽𝓇𝒶 `y
+                 ∷ 𝒽𝓇𝒶 `z
+                 ∷
+                 𝓋𝓇𝒶 x≈y ∷ 𝓋𝓇𝒶 y≡z ∷ []))
+    -- trans x≡y y≡z
+
+  _≡˘⟨_⟩_ : ∀ (x {y z} : A) → y ≡ x → y ≡ z → x ≡ z
+  _ ≡˘⟨ y≡x ⟩ y≡z = trans (sym y≡x) y≡z
+
+  _∎ : ∀ (x : A) → x ≡ x
+  _∎ _ = refl
+
 module PrerequisiteExam─with─tactics where
 
-  open ≡-Reasoning -- -with-tactics
+  open my/≡-Reasoning -- {Level.zero} {ℕ} -- -with-tactics
 
   lemma : ∀ (X : ℕ) → Σ[ m ∈ ℕ ] (2 * m  ≡  X * X + X)
   lemma zero    = 0 , refl
@@ -1548,11 +1724,42 @@ module PrerequisiteExam─with─tactics where
 
       m = suc X + m′
 
+      -- neato
+      _ : X + (m + suc m′) ≡ X + suc (m + m′)
+      _ = apply₅ (+-suc m m′)
+
+      _ : X + (m + suc m′) ≡ X + suc (m + m′)
+      _ = begin (
+          _≡⟨_⟩_  (X + (m + suc m′))
+                  {X + suc (m + m′)} {X + suc (m + m′)} {- items that could not be inferred -}
+                  (apply₅ (+-suc m m′))
+                  (X + suc (m + m′)∎))
+
+      te : X + (m + suc m′) ≡ X + suc (m + m′)
+      -- te =  _≡⟨_⟩′_ (X + (m + suc m′)) (apply₅ (+-suc m m′)) (refl {x = X + suc (m + m′)})
+      te = _≡⟨_⟩′_ (X + (m + suc m′)) {y = X + suc (m + m′)} (apply₅ (+-suc m m′)) (refl {x = X + suc (m + m′)})
+      -- begin X + (m + suc m′) ≡⟨ apply₅ (+-suc m m′) ⟩′ (X + suc (m + m′) ∎)
+      -- apply₅ (+-suc m m′)
+
+      {-
+      _ : (suc X + X * suc X) + suc X  ≡  suc X + suc (X * suc X + X)
+      _ = begin
+             (suc X + X * suc X) + suc X
+           ≡⟨ +-assoc (suc X) (X * suc X) (suc X) ⟩
+             suc X + (X * suc X + suc X)
+           ≡⟨ it ⟩ -- apply₅ (+-suc (X * suc X) X) ⟩
+             suc X + suc (X * suc X + X)
+           ∎
+           where it :  suc (X + (X * suc X + suc X)) ≡ suc (X + suc (X * suc X + X))
+                 it = apply₅ (+-suc {!!} {!!})
+      -}
+
+      pf : (suc X + X * suc X) + suc X  ≡  2 * m
       pf = begin
              (suc X + X * suc X) + suc X
            ≡⟨ +-assoc (suc X) (X * suc X) (suc X) ⟩
              suc X + (X * suc X + suc X)
-           ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
+           ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩ -- apply₅ (+-suc (X * suc X) X) ⟩ -- cong (λ it → suc X + it) (+-suc _ _) ⟩
              suc X + suc (X * suc X + X)
            ≡⟨ cong (λ it → suc X + suc (it + X)) (*-comm X (suc X)) ⟩
              suc X + suc (X + X * X + X)
@@ -1604,10 +1811,10 @@ macro
   _⟫_ τ ρ goal = do unify goal
                       (def (quote Σ) (𝓋𝓇𝒶 τ ∷ 𝓋𝓇𝒶 ρ ∷ []))
 
-test : Set
-test = Char ⟫ λ (x : Char) → ℕ
+testf : Set
+testf = Char ⟫ λ (x : Char) → ℕ
 
-el : test
+el : testf
 el = 'c' , 0
 
 --------------------------------------------------------
@@ -1713,5 +1920,5 @@ https://github.com/alhassy/org-agda-mode
 # eval: (visual-line-mode t)
 # eval: (load-file "~/org-agda-mode/org-agda-mode.el")
 # eval: (load-file "~/org-agda-mode/literate.el")
-# compile-command: (progn (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
+# compile-command: (progn (org-babel-tangle) (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
 # End:

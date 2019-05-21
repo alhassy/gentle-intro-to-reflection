@@ -35,23 +35,24 @@ A pure `.agda` file can be found [here](tangled.agda).
 
 # Table of Contents
 
-1.  [Imports](#org3896621)
-2.  [Introduction](#org53f514e)
-3.  [`NAME` ─Type of known identifiers](#orgb1f3711)
-4.  [`Arg` ─Type of arguments](#org15cc7e8)
-5.  [`Term` ─Type of terms](#orga4570a6)
-    1.  [Example: Simple Types](#org8571551)
-    2.  [Example: Simple Terms](#org9440ef6)
-    3.  [A relationship between `quote` and `quoteTerm`](#org5eec355)
-    4.  [Example: Lambda Terms](#org11a8a0f)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#org2fa4818)
-7.  [Unquoting ─Making new functions & types](#orgd008863)
-8.  [Sidequest: Avoid tedious `refl` proofs](#orgf9d86e9)
-9.  [Macros ─Abstracting Proof Patterns](#org5288910)
-    1.  [C-style macros](#org568f94e)
-    2.  [Tedious Repetitive Proofs No More!](#orgf7ff9ce)
-10. [Our First Real Proof Tactic](#org9b33517)
-11. [Heuristic for Writing a Macro](#orgf9d5d41)
+1.  [Imports](#org0aa53a5)
+2.  [Introduction](#org93d5c28)
+3.  [`NAME` ─Type of known identifiers](#org8c7be7f)
+4.  [`Arg` ─Type of arguments](#org479222b)
+5.  [`Term` ─Type of terms](#orgc533d22)
+    1.  [Example: Simple Types](#org9e1b7a8)
+    2.  [Example: Simple Terms](#org5f8d00c)
+    3.  [A relationship between `quote` and `quoteTerm`](#org24877d0)
+    4.  [Example: Lambda Terms](#orgb235933)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#org24401fa)
+7.  [Unquoting ─Making new functions & types](#org2291c5c)
+8.  [Sidequest: Avoid tedious `refl` proofs](#org9553964)
+9.  [Macros ─Abstracting Proof Patterns](#org17511af)
+    1.  [C-style macros](#orgce93e44)
+    2.  [Tedious Repetitive Proofs No More!](#org3df21e0)
+10. [Our First Real Proof Tactic](#orgf24bc9c)
+11. [Heuristic for Writing a Macro](#orge7318a1)
+12. [What about somewhere deep within a subexpression?](#org00976e8)
 
 
 # Imports
@@ -67,7 +68,7 @@ First, some necessary imports:
     open import Relation.Nullary
 
     open import Data.Unit
-    open import Data.Nat as Nat
+    open import Data.Nat as Nat hiding (_⊓_)
     open import Data.Bool
     open import Data.Product
     open import Data.List as List
@@ -182,14 +183,12 @@ This information is captured by the `Arg` type.
 
 For example, let's create some helpers that make arguments of any given type `A`:
 
-    variable {A} : Set
-
     {- 𝓋isible 𝓇elevant 𝒶rgument -}
-    𝓋𝓇𝒶 : A → Arg A
+    𝓋𝓇𝒶 : {A : Set} → A → Arg A
     𝓋𝓇𝒶 = arg (arg-info visible relevant)
 
     {- 𝒽idden 𝓇elevant 𝒶rgument -}
-    𝒽𝓇𝒶 : A → Arg A
+    𝒽𝓇𝒶 : {A : Set} → A → Arg A
     𝒽𝓇𝒶 = arg (arg-info hidden relevant)
 
 Below are the variable counterparts, for the `Term` datatype,
@@ -1112,3 +1111,166 @@ earlier to arrive at:
 	→  x ≡ y
 	-- →  f x ≡ g y {- “apply₄ p” now has a unification error ^_^ -}
     _ = λ p → apply₄ p
+
+
+# What about somewhere deep within a subexpression?
+
+Consider,
+
+      suc X + (X * suc X + suc X)
+    ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
+      suc X + suc (X * suc X + X)
+
+Can we find `(λ it → suc X + it)` mechanically ;-)
+
+Using the same refinement apporach outlined earlier, we begin with the following
+working code then slowly, one piece at a time, replace the whole thing with an
+`unquote (unify (quoteTerm ⋯workingCodeHere⋯))`. Then we push the `quoteTerm`
+further in as much as possible and construct the helper functions to make
+this transation transpire.
+
+    open import Data.Nat.Properties
+    {- +-suc : ∀ m n → m + suc n ≡ suc (m + n) -}
+
+    test₀ : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+    test₀ {m} {n} {k} = cong (k +_) (+-suc m n)
+
+Let's follow the aforementioned approach by starting out with some postulates.
+
+    postulate 𝒳 : ℕ
+    postulate 𝒢 : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
+
+    𝒮𝒳 : Arg Term
+    𝒮𝒳 = 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (quoteTerm 𝒳) ])
+
+    𝒢ˡ 𝒢ʳ : Term
+    𝒢ˡ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝒮𝒳 ∷ [])) ∷ [])
+    𝒢ʳ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ [])) ]) ∷ [])
+
+It seems that the left and right sides of 𝒢 “meet” at `def (quote _+_) (𝒮𝒳 ∷ [])`:
+We check the equality of the quoted operator, `_+_`, then recursively check the arguments.
+Whence the following naive algorithm:
+
+    {- Should definitily be in the standard library -}
+    ⌊_⌋ : ∀ {a} {A : Set a} → Dec A → Bool
+    ⌊ yes p ⌋ = true
+    ⌊ no ¬p ⌋ = false
+
+    import Agda.Builtin.Reflection as Builtin
+
+    _$-≟_ : Term → Term → Bool
+    con c args $-≟ con c′ args′ = Builtin.primQNameEquality c c′
+    def f args $-≟ def f′ args′ = Builtin.primQNameEquality f f′
+    var x args $-≟ var x′ args′ = ⌊ x Nat.≟ x′ ⌋
+    _ $-≟ _ = false
+
+    {- Only gets heads and as much common args, not anywhere deep. :'( -}
+    infix 5 _⊓_
+    {-# TERMINATING #-} {- Fix this by adding fuel (con c args) ≔ 1 + length args -}
+    _⊓_ : Term → Term → Term
+    l ⊓ r with l $-≟ r | l | r
+    ...| false | x | y = unknown
+    ...| true | var f args | var f′ args′ = var f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+    ...| true | con f args | con f′ args′ = con f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+    ...| true | def f args | def f′ args′ = def f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
+    ...| true | ll | _ = ll {- Left biased; using ‘unknown’ does not ensure idempotence. -}
+
+The bodies have names involving `!!`, this is to indicate a location of improvement.
+Indeed, this naive algorithm ignores visibility and relevance of arguments ─far from ideal.
+
+Joyously this works!  😂
+
+    _ : 𝒢ˡ ⊓ 𝒢ʳ ≡ def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 unknown ∷ [])
+    _ = refl
+
+    {- test using argument function 𝒶 and argument number X -}
+    _ : {X : ℕ} {𝒶 : ℕ → ℕ}
+      →
+	let gl = quoteTerm (𝒶 X + (X * 𝒶 X + 𝒶 X))
+	    gr = quoteTerm (𝒶 X + 𝒶 (X * 𝒶 X + X))
+	in gl ⊓ gr ≡ def (quote _+_) (𝓋𝓇𝒶 (var 0 [ 𝓋𝓇𝒶 (var 1 []) ]) ∷ 𝓋𝓇𝒶 unknown ∷ [])
+    _ = refl
+
+The `unknown` terms are far from desirable ─we ought to replace them with sections; i.e., an anonoymous lambda.
+My naive algorithm to achieve a section from a term containing ‘unknown’s is as follows:
+
+1.  Replace every `unknown` with a De Bruijn index.
+2.  Then, find out how many unknowns there are, and for each, stick an anonoymous lambda at the front.
+    -   Sticking a lambda at the front breaks existing De Bruijn indices, so increment them for each lambda.
+
+There is clear inefficiency here, but I'm not aiming to be efficient, just believable to some degree.
+
+    {- ‘unknown’ goes to a variable, a De Bruijn index -}
+    unknown-elim : ℕ → List (Arg Term) → List (Arg Term)
+    unknown-elim n [] = []
+    unknown-elim n (arg i unknown ∷ xs) = arg i (var n []) ∷ unknown-elim (n + 1) xs
+    unknown-elim n (arg i (var x args) ∷ xs) = arg i (var (n + suc x) args) ∷ unknown-elim n xs
+    unknown-elim n (arg i x ∷ xs)       = arg i x ∷ unknown-elim n xs
+    {- Essentially we want: body(unknownᵢ)  ⇒  λ _ → body(var 0)
+       However, now all “var 0” references in “body” refer to the wrong argument;
+       they now refer to “one more lambda away than before”. -}
+
+    unknown-count : List (Arg Term) → ℕ
+    unknown-count [] = 0
+    unknown-count (arg i unknown ∷ xs) = 1 + unknown-count xs
+    unknown-count (arg i _ ∷ xs) = unknown-count xs
+
+    unknown-λ : ℕ → Term → Term
+    unknown-λ zero body = body
+    unknown-λ (suc n) body = unknown-λ n (λ𝓋 "section" ↦ body)
+
+    {- Replace ‘unknown’ with sections -}
+    patch : Term → Term
+    patch it@(def f args) = unknown-λ (unknown-count args) (def f (unknown-elim 0 args))
+    patch it@(var f args) = unknown-λ (unknown-count args) (var f (unknown-elim 0 args))
+    patch it@(con f args) = unknown-λ (unknown-count args) (con f (unknown-elim 0 args))
+    patch t = t
+
+Putting meet, `_⊓_`, and this `patch` together into a macro:
+
+    macro
+      spine : Term → Term → TC ⊤
+      spine p goal
+	= do τ ← inferType p
+	     _ , _ , l , r ← ≡-type-info τ
+	     unify goal (patch (l ⊓ r))
+
+The expected tests pass ─so much joy :joy:
+
+    _ : spine 𝒢 ≡ suc 𝒳 +_
+    _ = refl
+
+    module testing-postulated-functions where
+      postulate 𝒶 : ℕ → ℕ
+      postulate _𝒷_ : ℕ → ℕ → ℕ
+      postulate 𝓰 : 𝒶 𝒳  𝒷  𝒳  ≡  𝒶 𝒳  𝒷  𝒶 𝓍
+
+      _ : spine 𝓰 ≡ (𝒶 𝒳 𝒷_)
+      _ = refl
+
+    _ : {X : ℕ} {G : suc X + (X * suc X + suc X)  ≡  suc X + suc (X * suc X + X)}
+      → quoteTerm G ≡ var 0 []
+    _ = refl
+
+The tests for `≡-head` still go through using `spine`
+which can thus be thought of as a generalisation ;-)
+
+Now the original problem is dealt with as a macro:
+
+    macro
+      apply₅ : Term → Term → TC ⊤
+      apply₅ p hole
+	= do τ ← inferType hole
+	     _ , _ , l , r ← ≡-type-info τ
+	     unify hole ((def (quote cong)
+		  (𝓋𝓇𝒶 (patch (l ⊓ r)) ∷ 𝓋𝓇𝒶 p ∷ [])))
+
+Curious, why in the following tests we cannot simply use `+-suc _ _`?
+
+    _ : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
+    _ = apply₅ (+-suc (𝒳 * suc 𝒳) 𝒳)
+
+    test : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+    test {m} {n} {k} = apply₅ (+-suc m n)
+
+This is super neat stuff ^\_^
