@@ -2,6 +2,8 @@
 # | ~C-x C-o~ | transform literate Agda code delimiters to org ~org-agda~ src |
 #
 # Need to ensure org-indent-mode is off when going to agda.
+#
+# C-c C-= to see constraints.
 
 #+TITLE: A Gentle Introduction to Reflection in Agda
 #+DESCRIPTION: How can we use a single proof to prove two different theorems? One proof pattern, multiple invocations!
@@ -61,13 +63,13 @@ First, some necessary imports:
 module gentle-intro-to-reflection where
 
 import Level as Level
-open import Reflection hiding (_≟_ ; name)
+open import Reflection hiding (name; Type)
 open import Relation.Binary.PropositionalEquality hiding ([_])
 open import Relation.Unary using (Decidable)
 open import Relation.Nullary
 
 open import Data.Unit
-open import Data.Nat
+open import Data.Nat as Nat
 open import Data.Bool
 open import Data.Product
 open import Data.List as List
@@ -365,11 +367,13 @@ We will demonstrate an example of a section, say
 
 ** A relationship between ~quote~ and ~quoteTerm~
 
-Known names ~f'~ in a quoted term are denoted by a ~quote f'~ in the AST representation.
+Known names ~𝒻~ in a quoted term are denoted by a ~quote 𝒻~ in the AST representation.
+
+For example ─I will use this 𝒻ℴ𝓃𝓉 for my postulated items─
 #+BEGIN_SRC org-agda
-postulate A' B' : Set
-postulate f' : A' → B'
-_ : quoteTerm f' ≡ def (quote f') []
+postulate 𝒜 ℬ : Set
+postulate 𝒻 : 𝒜 → ℬ
+_ : quoteTerm 𝒻 ≡ def (quote 𝒻) []
 _ = refl
 #+END_SRC
 
@@ -1146,15 +1150,15 @@ macro
 
 For example:
 #+BEGIN_SRC org-agda
-postulate x y : ℕ
-postulate q : x + 2 ≡ y
+postulate 𝓍 𝓎 : ℕ
+postulate 𝓆 : 𝓍 + 2 ≡ 𝓎
 
 {- Same proof yields two theorems! (งಠ_ಠ)ง -}
-_ : y ≡ x + 2
-_ = apply₁ q
+_ : 𝓎 ≡ 𝓍 + 2
+_ = apply₁ 𝓆
 
-_ : x + 2 ≡ y
-_ = apply₁ q
+_ : 𝓍 + 2 ≡ 𝓎
+_ = apply₁ 𝓆
 #+END_SRC
 
 Let's furnish ourselves with the ability to inspect the /produced/ proofs.
@@ -1239,7 +1243,7 @@ macro
   sumSides : Name → Term → TC ⊤
   sumSides n goal = ⋯
 
-_ : sumSides q ≡ x + 2 + y
+_ : sumSides 𝓆 ≡ 𝓍 + 2 + 𝓎
 _ = refl
 #+END_EXAMPLE
 :Solution:
@@ -1251,7 +1255,7 @@ macro
   sumSides : Name → Term → TC ⊤
   sumSides n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal (def (quote _+_) (𝓋𝓇𝒶 l ∷ 𝓋𝓇𝒶 r ∷ []))
 
-_ : sumSides q ≡ x + 2 + y
+_ : sumSides 𝓆 ≡ 𝓍 + 2 + 𝓎
 _ = refl
 #+END_SRC
 :End:
@@ -1269,16 +1273,367 @@ macro
   right : Name → Term → TC ⊤
   right n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal r
 
-_ : sumSides q  ≡  left q + right q
+_ : sumSides 𝓆  ≡  left 𝓆 + right 𝓆
 _ = refl
 
-_ : left q ≡ x + 2
+_ : left 𝓆 ≡ 𝓍 + 2
 _ = refl
 
-_ : right q ≡ y
+_ : right 𝓆 ≡ 𝓎
 _ = refl
 #+END_SRC
 :End:
+
+* Heuristic for Writing a Macro
+
+I have found the following stepwise refinement approach to be useful in constructing
+macros. ─Test Driven Development in a proof-centric setting─
+
+1. Write a no-op macro: ~mymacro p goal = unify p goal~.
+1. Write the test case ~mymacro p ≡ p~.
+2. Feel good, you've succeeded.
+3. Alter the test ever so slightly to become closer to your goal.
+4. The test now breaks, go fix it.
+5. Go to step 3.
+
+For example, suppose we wish to consider proofs ~p~ of expressions of the form ~h x ≡ y~
+and our macro is intended to obtain the function ~h~. We proceed as follows:
+0. Postulate ~x, y, h, p~ so the problem is well posed.
+1. Use the above approach to form a no-op macro.
+2. Refine the test to ~mymacro p ≡ λ e → 0~ and refine the macro as well.
+3. Refine the test to ~mymacro p ≡ λ e → e~ and refine the macro as well.
+4. Eventually succeeded in passing the desired test ~mymacro p ≡ λ e → h e~
+    ─then eta reduce.
+
+   Along the way, it may be useful to return the /string/ name of ~h~
+   or rewrite the test as ~_≡_ {Level.zero} {ℕ → ℕ} (mymacro p) ≡ ⋯~.
+   This may provide insight on how to repair or continue with macro construction.
+
+5. Throw away the postultes, one at a time, making them arguments declared in the test;
+    refine macro each time so the test continues to pass as each postulate is removed.
+    Each postulate removal may require existing helper functions to be altered.
+
+6. We have considered function applications, then variable funcctions, finally
+   consider constructors. Ensure tests cover all these, for this particular problem.
+
+*Exercise:* Carry this through to produce the above discussed example macro, call it ~≡-head~. To help you on your
+way, here is a useful function:
+#+BEGIN_SRC org-agda
+{- If we have “f $ args” return “f”. -}
+$-head : Term → Term
+$-head (var v args) = var v []
+$-head (con c args) = con c []
+$-head (def f args) = def f []
+$-head (pat-lam cs args) = pat-lam cs []
+$-head t = t
+#+END_SRC
+:Solution:
+#+BEGIN_SRC org-agda
+
+postulate 𝒽 : ℕ → ℕ
+postulate 𝒹 𝓮 : ℕ
+postulate 𝓅𝒻 : 𝒽 𝒹 ≡ 𝓮
+postulate 𝓅𝒻′ : suc 𝒹 ≡ 𝓮
+
+macro
+  ≡-head : Term → Term → TC ⊤
+  ≡-head p goal = do τ ← inferType p
+                     _ , _ , l , _ ← ≡-type-info τ
+                     unify goal ($-head l)
+
+_ : quoteTerm (left 𝓅𝒻) ≡ def (quote 𝒽) [ 𝓋𝓇𝒶 (quoteTerm 𝒹) ]
+_ = refl
+
+_ : ≡-head 𝓅𝒻 ≡ 𝒽
+_ = refl
+
+_ : ≡-head 𝓅𝒻′ ≡ suc
+_ = refl
+
+_ : ∀ {g : ℕ → ℕ} {pf″ : g 𝒹 ≡ 𝓮} → ≡-head pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r : ℕ} {g : ℕ → ℕ} {pf″ : g l ≡ r} → ≡-head pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r s : ℕ} {p : l + r ≡ s} → ≡-head p ≡ _+_
+_ = refl
+#+END_SRC
+:End:
+
+
+With the ability to obtain functions being applied in propositional equalities,
+we can now turn to lifiting a proof from ~x ≡ y~ to suffice proving ~f x ≡ f y~.
+We start with the desired goal and use the stepwise refinement approach outlined
+earlier to arrive at:
+#+BEGIN_SRC org-agda
+macro
+  apply₄ : Term → Term → TC ⊤
+  apply₄ p goal = try (do τ ← inferType goal
+                          _ , _ , l , r ← ≡-type-info τ
+                          unify goal ((def (quote cong) (𝓋𝓇𝒶 ($-head l) ∷ 𝓋𝓇𝒶 p ∷ []))))
+                  or-else unify goal p
+
+_ : ∀ {x y : ℕ} {f : ℕ → ℕ} (p : x ≡ y)  → f x ≡ f y
+_ = λ p → apply₄ p
+
+_ : ∀ {x y : ℕ} {f g : ℕ → ℕ} (p : x ≡ y)
+    →  x ≡ y
+    -- →  f x ≡ g y {- “apply₄ p” now has a unification error ^_^ -}
+_ = λ p → apply₄ p
+#+END_SRC
+
+* COMMENT What about somewhere deep within a subexpression?
+
+Consdier,
+#+BEGIN_EXAMPLE org-agda
+             suc X + (X * suc X + suc X)
+           ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
+             suc X + suc (X * suc X + X)
+#+END_EXAMPLE
+Can we find ~(λ it → suc X + it)~ mechanically ;-)
+
+
+f x y (z  z₁  z₂  z₃) w
+f x y (z′ z₁′ z₂′ z₃′) w
+
+\begin{code}
+postulate 𝒳 : ℕ
+postulate 𝒢 : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
+
+{-# TERMINATING #-}
+$-context : Term → Term
+$-context (var v args) = var v (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
+$-context (con c args) = con c (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
+$-context (def f args) = def f (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
+$-context (pat-lam cs args) = pat-lam cs (List.map (λ{ (arg i t) → arg i ($-context t) }) args)
+$-context t = t
+
+{- Should definitily be in the standard library -}
+⌊_⌋ : ∀ {a} {A : Set a} → Dec A → Bool
+⌊ yes p ⌋ = true
+⌊ no ¬p ⌋ = false
+
+import Agda.Builtin.Reflection as Builtin
+
+_$-≟_ : Term → Term → Bool
+con c args $-≟ con c′ args′ = Builtin.primQNameEquality c c′
+def f args $-≟ def f′ args′ = Builtin.primQNameEquality f f′
+var x args $-≟ var x′ args′ = ⌊ x Nat.≟ x′ ⌋
+_ $-≟ _ = false
+
+$-align : List (Arg Term) → List (Arg Term) → List (Arg Term)
+$-align [] ys = []
+$-align (x ∷ xs) [] = []
+$-align ( l@(arg i x) ∷ xs) (r@(arg j y) ∷ ys) with x $-≟ y
+... | false = {!!}
+... | true = {!!}
+
+macro
+  ≡-context : Term → Term → TC ⊤
+  ≡-context p goal
+    = do τ ← inferType p
+         _ , _ , l , r ← ≡-type-info τ
+         unify goal ($-head l) -- (λ𝓋 "x" ↦ λ𝓋 "y" ↦ var 0 [])
+
+{-
+    = try (do τ ← inferType goal
+              _ , _ , l , r ← ≡-type-info τ
+              unify goal ((def (quote cong) (𝓋𝓇𝒶 ($-head l) ∷ 𝓋𝓇𝒶 p ∷ []))))
+      or-else unify goal p
+-}
+
+_ : _≡_ {Level.zero} {ℕ → ℕ → ℕ} (≡-context 𝒢) _+_
+_ = refl
+\end{code}
+
+* COMMENT nope, not here yet
+Let's use this. Below is an extraction of one of the first assignments for a class
+I taught this year ─CompSci 3EA3 Specfications and Correctness. Unfortunately, the
+~cong~ and explicit associativity made Agda appear a bit clunky at first; let's change that
+impression.
+#+BEGIN_SRC org-agda
+open import Relation.Binary.PropositionalEquality using () renaming (refl to definition-chasing)
+open import Data.Nat.Properties
+
+module PrerequisiteExam where
+
+  open ≡-Reasoning
+
+  lemma : ∀ (X : ℕ) → Σ[ m ∈ ℕ ] (2 * m  ≡  X * X + X)
+  lemma zero    = 0 , refl
+  lemma (suc X) = m , sym pf
+    where
+      inductive-hypothesis = lemma X
+      m′ = proj₁ inductive-hypothesis
+      pf′ = proj₂ inductive-hypothesis
+
+      m = suc X + m′
+
+      pf = begin
+             {- We start with the rhs, since it's more complicated. -}
+             (suc X) * (suc X) + (suc X)
+           ≡⟨ definition-chasing ⟩
+             {- Go into the hole blow and enter C-c C-Enter to fill it. -}
+             (suc X + X * suc X) + suc X
+           ≡⟨ +-assoc (suc X) (X * suc X) (suc X) ⟩
+             {- We have to explicitly invoke associativity! -}
+             suc X + (X * suc X + suc X)
+           ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
+             {- We also have to explicitly invoke congruence,
+                similar to using monotonicity in 2DM3. -}
+             suc X + suc (X * suc X + X)
+           ≡⟨ cong (λ it → suc X + suc (it + X)) (*-comm X (suc X)) ⟩
+             suc X + suc (suc X * X + X)
+           ≡⟨ definition-chasing ⟩
+             {- Definition chasing (reflexivity) steps are optional,
+                but we'll often put them in for readability. -}
+             suc X + suc (X + X * X + X)
+           ≡⟨ cong (λ it → suc X + suc it) (+-assoc X (X * X) X) ⟩
+             suc X + suc (X + (X * X + X))
+           ≡⟨ cong (λ it → suc X + suc (X + it)) (sym pf′) ⟩
+             {- Here we can use the induction hypothesis. -}
+             suc X + suc (X + 2 * m′)
+           ≡⟨ definition-chasing ⟩
+             suc X + (suc X + 2 * m′)
+           ≡⟨ sym (+-assoc (suc X) (suc X) (2 * m′)) ⟩
+             (suc X + suc X) + 2 * m′
+           ≡⟨ cong (λ it → (suc X + it) + 2 * m′) (sym (+-identityʳ _)) ⟩
+             (suc X + (suc X + 0)) + 2 * m′
+           ≡⟨ definition-chasing ⟩
+             2 * suc X + 2 * m′
+           ≡⟨ sym (*-distribˡ-+ 2 (suc X) m′) ⟩
+             2 * (suc X + m′)
+           ≡⟨ definition-chasing ⟩
+             {- (suc X + m′) looks like a good candidate for m,
+                so we can define m to be it by filling the hole for m above. -}
+             2 * m
+           ∎
+#+END_SRC
+
+Takes II:
+#+BEGIN_SRC org-agda
+macro
+  apply : Term → Term → TC ⊤
+  apply p goal = try (do τ ← inferType goal
+                         _ , _ , l , r ← ≡-type-info τ
+                         unify goal ((def (quote cong) (𝓋𝓇𝒶 ($-head l) ∷ 𝓋𝓇𝒶 p ∷ []))))
+                 or-else try unify goal (def (quote sym) (𝓋𝓇𝒶 p ∷ []))
+                         or-else try unify goal p
+                                 or-else unify goal (con (quote refl) [])
+
+module ≡-Reasoning-with-tactics {a} {A : Set a} where
+
+  open ≡-Reasoning public hiding (_≡⟨_⟩_)
+
+  -- infixr 2 _≡⟨_⟩_
+
+  -- _≡⟨_⟩_ : ∀ (x {y z} : A) → x ≡ y → y ≡ z → x ≡ z
+  -- _ ≡⟨ x≡y ⟩ y≡z = trans (apply x≡y) y≡z
+
+open import Relation.Binary.PropositionalEquality using () renaming (refl to definition-chasing)
+open import Data.Nat.Properties
+
+module PrerequisiteExam─with─tactics where
+
+  open ≡-Reasoning -- -with-tactics
+
+  lemma : ∀ (X : ℕ) → Σ[ m ∈ ℕ ] (2 * m  ≡  X * X + X)
+  lemma zero    = 0 , refl
+  lemma (suc X) = m , sym pf
+    where
+      inductive-hypothesis = lemma X
+      m′ = proj₁ inductive-hypothesis
+      pf′ = proj₂ inductive-hypothesis
+
+      m = suc X + m′
+
+      pf = begin
+             (suc X + X * suc X) + suc X
+           ≡⟨ +-assoc (suc X) (X * suc X) (suc X) ⟩
+             suc X + (X * suc X + suc X)
+           ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
+             suc X + suc (X * suc X + X)
+           ≡⟨ cong (λ it → suc X + suc (it + X)) (*-comm X (suc X)) ⟩
+             suc X + suc (X + X * X + X)
+           ≡⟨ cong (λ it → suc X + suc it) (+-assoc X (X * X) X) ⟩
+             suc X + suc (X + (X * X + X))
+           ≡⟨ cong (λ it → suc X + suc (X + it)) (sym pf′) ⟩
+             suc X + (suc X + 2 * m′)
+           ≡⟨ apply (+-assoc (suc X) (suc X) (2 * m′)) ⟩ -- no sym ♥‿♥
+             (suc X + suc X) + 2 * m′
+           ≡⟨ cong (λ it → (suc X + it) + 2 * m′) (sym (+-identityʳ _)) ⟩
+             (suc X + (suc X + 0)) + 2 * m′
+           ≡⟨ definition-chasing ⟩
+             2 * suc X + 2 * m′
+           ≡⟨ apply (*-distribˡ-+ 2 (suc X) m′) ⟩  -- no sym ♥‿♥
+             2 * (suc X + m′)
+           ≡⟨ definition-chasing ⟩
+             2 * m
+           ∎
+#+END_SRC
+
+* COMMENT Flatenning ─& mixins ─anaphoric macros in Agda?
+
+#+BEGIN_SRC org-agda
+
+data Empty : Set₁ where
+
+record Type : Set₁ where
+  field Carrier : Set
+
+-- record Magma : Set₁ where
+--
+-- Magma ≔ Empty ⟫ Type ⟫ (Carrier → Carrier → Carrier)
+
+{- Specfication
+
+   field′ name ∶ type
+≅  record Anon : TypeOf(type) where field name : type
+≅  name : TypeOf(type)
+   name = type
+
+   τ ⟫ τ′
+≅  anon : Set $ Typeof(τ) ⊔ Typeof (τ′)
+   anon = Σ t : τ • τ′
+
+-}
+
+macro
+  _⟫_ : Term → Term → Term → TC ⊤
+  _⟫_ τ ρ goal = do unify goal
+                      (def (quote Σ) (𝓋𝓇𝒶 τ ∷ 𝓋𝓇𝒶 ρ ∷ []))
+
+test : Set
+test = Char ⟫ λ (x : Char) → ℕ
+
+el : test
+el = 'c' , 0
+
+--------------------------------------------------------
+
+record Two : Set where
+  field
+   a : ℕ
+   b : ℕ
+
+-- get first field from a record
+fields : Definition → TC Name
+fields (record′ c (arg _ f ∷ fs)) = returnTC f
+fields _ = typeError [ strErr "Nope: No fields" ]
+
+macro
+  field₁ : Name → Term → TC ⊤
+  field₁ n goal = do τ ← getDefinition n; f ← fields τ; unify goal (def f [])
+
+two₂ : Two → ℕ
+two₂ = field₁ Two
+
+-- :smile: yay (งಠ_ಠ)ง
+
+-- it would be nice to generate the names fieldᵢ rather than write them out by hand.
+
+#+END_SRC
 
 * TODO COMMENT ideas
 
@@ -1316,9 +1671,8 @@ thm a b = refl
 
 #+END_SRC
 
-
 + flatten: Take a nested record hierarchy and produce a flattened telescope, since
-  records cannot be unquotes.
+  records cannot be unquoted.
 
 + 2^50 * 3^313 ≡  3^313 * 2^50 is true by symmetry of *,
   but may timeout if we try to prove things by refl.
@@ -1351,14 +1705,13 @@ C-c C-c: evalute src block
 The org-agda-mode and literate.el come from:
 https://github.com/alhassy/org-agda-mode
 
-# Having this with the local variables causes trees
+# Having the make-readme progn below with the local variables causes trees
 # to remain folded when moving to agda2-mode.
-#
-(progn (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
 
 # Local Variables:
 # eval: (setq org-src-preserve-indentation 't)
 # eval: (visual-line-mode t)
 # eval: (load-file "~/org-agda-mode/org-agda-mode.el")
 # eval: (load-file "~/org-agda-mode/literate.el")
+# compile-command: (progn (org-babel-goto-named-src-block "make-readme") (org-babel-execute-src-block) (outline-hide-sublevels 1))
 # End:

@@ -35,22 +35,23 @@ A pure `.agda` file can be found [here](tangled.agda).
 
 # Table of Contents
 
-1.  [Imports](#org0d1d071)
-2.  [Introduction](#org28b14e5)
-3.  [`NAME` ─Type of known identifiers](#orgd0c86ed)
-4.  [`Arg` ─Type of arguments](#org8354554)
-5.  [`Term` ─Type of terms](#org084ee6e)
-    1.  [Example: Simple Types](#org809e540)
-    2.  [Example: Simple Terms](#orgda86958)
-    3.  [A relationship between `quote` and `quoteTerm`](#org2538d15)
-    4.  [Example: Lambda Terms](#org4922012)
-6.  [Metaprogramming with The Typechecking Monad `TC`](#orgec9151c)
-7.  [Unquoting ─Making new functions & types](#org56cc3ec)
-8.  [Sidequest: Avoid tedious `refl` proofs](#org10b13a4)
-9.  [Macros ─Abstracting Proof Patterns](#org8fa9f4c)
-    1.  [C-style macros](#org4999d81)
-    2.  [Tedious Repetitive Proofs No More!](#org3ac32e5)
-10. [Our First Real Proof Tactic](#org419b316)
+1.  [Imports](#org3896621)
+2.  [Introduction](#org53f514e)
+3.  [`NAME` ─Type of known identifiers](#orgb1f3711)
+4.  [`Arg` ─Type of arguments](#org15cc7e8)
+5.  [`Term` ─Type of terms](#orga4570a6)
+    1.  [Example: Simple Types](#org8571551)
+    2.  [Example: Simple Terms](#org9440ef6)
+    3.  [A relationship between `quote` and `quoteTerm`](#org5eec355)
+    4.  [Example: Lambda Terms](#org11a8a0f)
+6.  [Metaprogramming with The Typechecking Monad `TC`](#org2fa4818)
+7.  [Unquoting ─Making new functions & types](#orgd008863)
+8.  [Sidequest: Avoid tedious `refl` proofs](#orgf9d86e9)
+9.  [Macros ─Abstracting Proof Patterns](#org5288910)
+    1.  [C-style macros](#org568f94e)
+    2.  [Tedious Repetitive Proofs No More!](#orgf7ff9ce)
+10. [Our First Real Proof Tactic](#org9b33517)
+11. [Heuristic for Writing a Macro](#orgf9d5d41)
 
 
 # Imports
@@ -60,13 +61,13 @@ First, some necessary imports:
     module gentle-intro-to-reflection where
 
     import Level as Level
-    open import Reflection hiding (_≟_ ; name)
+    open import Reflection hiding (name; Type)
     open import Relation.Binary.PropositionalEquality hiding ([_])
     open import Relation.Unary using (Decidable)
     open import Relation.Nullary
 
     open import Data.Unit
-    open import Data.Nat
+    open import Data.Nat as Nat
     open import Data.Bool
     open import Data.Product
     open import Data.List as List
@@ -327,11 +328,13 @@ We will demonstrate an example of a section, say
 
 ## A relationship between `quote` and `quoteTerm`
 
-Known names `f'` in a quoted term are denoted by a `quote f'` in the AST representation.
+Known names `𝒻` in a quoted term are denoted by a `quote 𝒻` in the AST representation.
 
-    postulate A' B' : Set
-    postulate f' : A' → B'
-    _ : quoteTerm f' ≡ def (quote f') []
+For example ─I will use this 𝒻ℴ𝓃𝓉 for my postulated items─
+
+    postulate 𝒜 ℬ : Set
+    postulate 𝒻 : 𝒜 → ℬ
+    _ : quoteTerm 𝒻 ≡ def (quote 𝒻) []
     _ = refl
 
 In contrast, names that *vary* are denoted by a `var` constructor in the AST representation.
@@ -971,15 +974,15 @@ With the setup in hand, we can now form our macro:
 
 For example:
 
-    postulate x y : ℕ
-    postulate q : x + 2 ≡ y
+    postulate 𝓍 𝓎 : ℕ
+    postulate 𝓆 : 𝓍 + 2 ≡ 𝓎
 
     {- Same proof yields two theorems! (งಠ_ಠ)ง -}
-    _ : y ≡ x + 2
-    _ = apply₁ q
+    _ : 𝓎 ≡ 𝓍 + 2
+    _ = apply₁ 𝓆
 
-    _ : x + 2 ≡ y
-    _ = apply₁ q
+    _ : 𝓍 + 2 ≡ 𝓎
+    _ = apply₁ 𝓆
 
 Let's furnish ourselves with the ability to inspect the *produced* proofs.
 
@@ -1037,10 +1040,75 @@ Hint: You cannot use the `≡-type-info` method directly, instead you must invok
       sumSides : Name → Term → TC ⊤
       sumSides n goal = ⋯
 
-    _ : sumSides q ≡ x + 2 + y
+    _ : sumSides 𝓆 ≡ 𝓍 + 2 + 𝓎
     _ = refl
 
 **Exercise:** Write two macros, `left` and `right`, such that
 `sumSides q  ≡ left q + right q`, where `q` is a known name.
 These two macros provide the left and right hand sides of the
 ≡-term they are given.
+
+
+# Heuristic for Writing a Macro
+
+I have found the following stepwise refinement approach to be useful in constructing
+macros. ─Test Driven Development in a proof-centric setting─
+
+1.  Write a no-op macro: `mymacro p goal = unify p goal`.
+2.  Write the test case `mymacro p ≡ p`.
+3.  Feel good, you've succeeded.
+4.  Alter the test ever so slightly to become closer to your goal.
+5.  The test now breaks, go fix it.
+6.  Go to step 3.
+
+For example, suppose we wish to consider proofs `p` of expressions of the form `h x ≡ y`
+and our macro is intended to obtain the function `h`. We proceed as follows:
+
+1.  Postulate `x, y, h, p` so the problem is well posed.
+2.  Use the above approach to form a no-op macro.
+3.  Refine the test to `mymacro p ≡ λ e → 0` and refine the macro as well.
+4.  Refine the test to `mymacro p ≡ λ e → e` and refine the macro as well.
+5.  Eventually succeeded in passing the desired test `mymacro p ≡ λ e → h e`
+    ─then eta reduce.
+
+    Along the way, it may be useful to return the *string* name of `h`
+    or rewrite the test as `_≡_ {Level.zero} {ℕ → ℕ} (mymacro p) ≡ ⋯`.
+    This may provide insight on how to repair or continue with macro construction.
+
+6.  Throw away the postultes, one at a time, making them arguments declared in the test;
+    refine macro each time so the test continues to pass as each postulate is removed.
+    Each postulate removal may require existing helper functions to be altered.
+
+7.  We have considered function applications, then variable funcctions, finally
+    consider constructors. Ensure tests cover all these, for this particular problem.
+
+**Exercise:** Carry this through to produce the above discussed example macro, call it `≡-head`. To help you on your
+way, here is a useful function:
+
+    {- If we have “f $ args” return “f”. -}
+    $-head : Term → Term
+    $-head (var v args) = var v []
+    $-head (con c args) = con c []
+    $-head (def f args) = def f []
+    $-head (pat-lam cs args) = pat-lam cs []
+    $-head t = t
+
+With the ability to obtain functions being applied in propositional equalities,
+we can now turn to lifiting a proof from `x ≡ y` to suffice proving `f x ≡ f y`.
+We start with the desired goal and use the stepwise refinement approach outlined
+earlier to arrive at:
+
+    macro
+      apply₄ : Term → Term → TC ⊤
+      apply₄ p goal = try (do τ ← inferType goal
+			      _ , _ , l , r ← ≡-type-info τ
+			      unify goal ((def (quote cong) (𝓋𝓇𝒶 ($-head l) ∷ 𝓋𝓇𝒶 p ∷ []))))
+		      or-else unify goal p
+
+    _ : ∀ {x y : ℕ} {f : ℕ → ℕ} (p : x ≡ y)  → f x ≡ f y
+    _ = λ p → apply₄ p
+
+    _ : ∀ {x y : ℕ} {f g : ℕ → ℕ} (p : x ≡ y)
+	→  x ≡ y
+	-- →  f x ≡ g y {- “apply₄ p” now has a unification error ^_^ -}
+    _ = λ p → apply₄ p

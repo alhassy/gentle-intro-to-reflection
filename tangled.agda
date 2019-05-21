@@ -14,10 +14,10 @@ open import Data.List as List
 open import Data.Char as Char
 open import Data.String as String
 
-{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Intro][Intro:1]] -}
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Introduction][Introduction:1]] -}
 data RGB : Set where
   Red Green Blue : RGB
-{- Intro:1 ends here -}
+{- Introduction:1 ends here -}
 
 {- [[file:~/reflection/gentle-intro-to-reflection.lagda::*~NAME~%20%E2%94%80Type%20of%20known%20identifiers][~NAME~ ─Type of known identifiers:1]] -}
 a-name : Name
@@ -137,9 +137,9 @@ _ = λ x y → refl
 {- Example: Simple Terms:3 ends here -}
 
 {- [[file:~/reflection/gentle-intro-to-reflection.lagda::*A%20relationship%20between%20~quote~%20and%20~quoteTerm~][A relationship between ~quote~ and ~quoteTerm~:1]] -}
-postulate A' B' : Set
-postulate f' : A' → B'
-_ : quoteTerm f' ≡ def (quote f') []
+postulate 𝒜 ℬ : Set
+postulate 𝒻 : 𝒜 → ℬ
+_ : quoteTerm 𝒻 ≡ def (quote 𝒻) []
 _ = refl
 {- A relationship between ~quote~ and ~quoteTerm~:1 ends here -}
 
@@ -575,15 +575,15 @@ macro
 {- Our First Real Proof Tactic:3 ends here -}
 
 {- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Our%20First%20Real%20Proof%20Tactic][Our First Real Proof Tactic:4]] -}
-postulate x y : ℕ
-postulate q : x + 2 ≡ y
+postulate 𝓍 𝓎 : ℕ
+postulate 𝓆 : 𝓍 + 2 ≡ 𝓎
 
 {- Same proof yields two theorems! (งಠ_ಠ)ง -}
-_ : y ≡ x + 2
-_ = apply₁ q
+_ : 𝓎 ≡ 𝓍 + 2
+_ = apply₁ 𝓆
 
-_ : x + 2 ≡ y
-_ = apply₁ q
+_ : 𝓍 + 2 ≡ 𝓎
+_ = apply₁ 𝓆
 {- Our First Real Proof Tactic:4 ends here -}
 
 {- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Our%20First%20Real%20Proof%20Tactic][Our First Real Proof Tactic:5]] -}
@@ -644,7 +644,7 @@ macro
   sumSides : Name → Term → TC ⊤
   sumSides n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal (def (quote _+_) (𝓋𝓇𝒶 l ∷ 𝓋𝓇𝒶 r ∷ []))
 
-_ : sumSides q ≡ x + 2 + y
+_ : sumSides 𝓆 ≡ 𝓍 + 2 + 𝓎
 _ = refl
 {- Our First Real Proof Tactic:10 ends here -}
 
@@ -656,12 +656,70 @@ macro
   right : Name → Term → TC ⊤
   right n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal r
 
-_ : sumSides q  ≡  left q + right q
+_ : sumSides 𝓆  ≡  left 𝓆 + right 𝓆
 _ = refl
 
-_ : left q ≡ x + 2
+_ : left 𝓆 ≡ 𝓍 + 2
 _ = refl
 
-_ : right q ≡ y
+_ : right 𝓆 ≡ 𝓎
 _ = refl
 {- Our First Real Proof Tactic:11 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Heuristic%20for%20Writing%20a%20Macro][Heuristic for Writing a Macro:1]] -}
+{- If we have “f $ args” return “f”. -}
+$-head : Term → Term
+$-head (var v args) = var v []
+$-head (con c args) = con c []
+$-head (def f args) = def f []
+$-head (pat-lam cs args) = pat-lam cs []
+$-head t = t
+{- Heuristic for Writing a Macro:1 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Heuristic%20for%20Writing%20a%20Macro][Heuristic for Writing a Macro:2]] -}
+postulate 𝒽 : ℕ → ℕ
+postulate 𝒹 𝓮 : ℕ
+postulate 𝓅𝒻 : 𝒽 𝒹 ≡ 𝓮
+postulate 𝓅𝒻′ : suc 𝒹 ≡ 𝓮
+
+macro
+  ≡-head : Term → Term → TC ⊤
+  ≡-head p goal = do τ ← inferType p
+                     _ , _ , l , _ ← ≡-type-info τ
+                     unify goal ($-head l)
+
+_ : quoteTerm (left 𝓅𝒻) ≡ def (quote 𝒽) [ 𝓋𝓇𝒶 (quoteTerm 𝒹) ]
+_ = refl
+
+_ : ≡-head 𝓅𝒻 ≡ 𝒽
+_ = refl
+
+_ : ≡-head 𝓅𝒻′ ≡ suc
+_ = refl
+
+_ : ∀ {g : ℕ → ℕ} {pf″ : g 𝒹 ≡ 𝓮} → ≡-head pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r : ℕ} {g : ℕ → ℕ} {pf″ : g l ≡ r} → ≡-head pf″ ≡ g
+_ = refl
+
+_ : ∀ {l r s : ℕ} {p : l + r ≡ s} → ≡-head p ≡ _+_
+_ = refl
+{- Heuristic for Writing a Macro:2 ends here -}
+
+{- [[file:~/reflection/gentle-intro-to-reflection.lagda::*Heuristic%20for%20Writing%20a%20Macro][Heuristic for Writing a Macro:3]] -}
+macro
+  apply₄ : Term → Term → TC ⊤
+  apply₄ p goal = try (do τ ← inferType goal
+                          _ , _ , l , r ← ≡-type-info τ
+                          unify goal ((def (quote cong) (𝓋𝓇𝒶 ($-head l) ∷ 𝓋𝓇𝒶 p ∷ []))))
+                  or-else unify goal p
+
+_ : ∀ {x y : ℕ} {f : ℕ → ℕ} (p : x ≡ y)  → f x ≡ f y
+_ = λ p → apply₄ p
+
+_ : ∀ {x y : ℕ} {f g : ℕ → ℕ} (p : x ≡ y)
+    →  x ≡ y
+    -- →  f x ≡ g y {- “apply₄ p” now has a unification error ^_^ -}
+_ = λ p → apply₄ p
+{- Heuristic for Writing a Macro:3 ends here -}
