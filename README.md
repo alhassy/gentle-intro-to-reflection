@@ -345,7 +345,7 @@ In contrast, names that *vary* are denoted by a `var` constructor in the AST rep
 
 ## Example: Lambda Terms
 
-First we show how reductions with lambdas works then we show how lambda functions
+First we show how reduction with lambdas works then we show how lambda functions
 are represented as `Term` values.
 
 `quoteTerm` typechecks and normalises its argument before yielding a `Term` value.
@@ -370,7 +370,7 @@ No delta-reduction happens; function definitions are not elaborated.
     _ = refl
 
 Here is a simple identity function on the Booleans.
-A “lam”da with a “visible” “abs”tract argument named `"x"` is introduced
+A “lam”bda with a “visible” “abs”tract argument named `"x"` is introduced
 having as body merely being the 0 nearest-bound variable, applied to an empty
 list of arguments.
 
@@ -423,7 +423,7 @@ Finally, here's an example of a section.
 	≡ λ𝓋 "section" ↦
 	   (def (quote _≡_)
 	    (𝒽𝓇𝒶 (def (quote Level.zero) []) ∷
-	     𝒽𝓇𝒶(def (quote String) []) ∷
+	     𝒽𝓇𝒶 (def (quote String) []) ∷
 	     𝓋𝓇𝒶 (var 0 []) ∷
 	     𝓋𝓇𝒶 (lit (string "b")) ∷ []))
     _ = refl
@@ -630,7 +630,7 @@ I even tried extracting the definition to its own file and no luck.
     _ : K 3 "cat" ≡ 3
     _ = refl
 
-**Bonus:** Proofs of a singleton type such as `IsRed` are essentially the same for all singelton types
+**Bonus:** Proofs of a singleton type such as `IsRed` are essentially the same for all singleton types
 over `RGB`. Write, in two stages, a metaprogram that demonstrates each singleton type has a single member
 ─c.f., `red-is-the-only-solution` from above. Hint: This question is as easy as the ones before it.
 
@@ -788,13 +788,13 @@ without mentioning them :b
     myconst : {A B : Set} → A → B → A
     myconst = λ x → λ y → first
 
-    mysum : ( {x} y : ℕ) → ℕ
+    mysum : ({x} y : ℕ) → ℕ
     mysum y = y + first
 
-C-style macros ─unifying against a concretely quoted term─ are helpeful
+C-style macros ─unifying against a concretely quoted term─ are helpful
 when learning reflection. For example, define a macro `use` that yields
-different strings according to the shape of their input ─this exercises
-increases famalrity with the `Term` type. Hint: Pattern match on the
+different strings according to the shape of their input ─this exercise
+increases familiarity with the `Term` type. Hint: Pattern match on the
 first argument ;-)
 
     macro
@@ -1151,7 +1151,7 @@ It seems that the left and right sides of 𝒢 “meet” at `def (quote _+_) (�
 We check the equality of the quoted operator, `_+_`, then recursively check the arguments.
 Whence the following naive algorithm:
 
-    {- Should definitily be in the standard library -}
+    {- Should definitely be in the standard library -}
     ⌊_⌋ : ∀ {a} {A : Set a} → Dec A → Bool
     ⌊ yes p ⌋ = true
     ⌊ no ¬p ⌋ = false
