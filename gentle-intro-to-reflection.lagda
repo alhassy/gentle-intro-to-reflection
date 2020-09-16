@@ -1,3 +1,4 @@
+# -*- org -*-
 # | ~C-x C-a~ | transform org ~org-agda~ blocks to literate Agda blocs        |
 # | ~C-x C-o~ | transform literate Agda code delimiters to org ~org-agda~ src |
 #
@@ -59,7 +60,7 @@ A pure ~.agda~ file can be found [[file:tangled.agda][here]].
 :END:
 
 First, some necessary imports:
-#+BEGIN_SRC org-agda
+\begin{code}
 module gentle-intro-to-reflection where
 
 import Level as Level
@@ -75,7 +76,8 @@ open import Data.Product
 open import Data.List as List
 open import Data.Char as Char
 open import Data.String as String
-#+END_SRC
+open import Function using (_$_)
+\end{code}
 
 :TangledImports:
 Repetition is a bad idea, but doing this since org-agda isn't mature
@@ -119,17 +121,118 @@ There are three main types in Agda's reflection mechanism:
 ~Name, Arg, Term~. We will learn about them with the aid of
 this following simple enumerated typed, as well as other standard types.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 data RGB : Set where
   Red Green Blue : RGB
-#+END_SRC
+\end{code}
+
+* Teaser: A Quaint Testing Setup
+
+We shall introduce a convenient syntax for /trivial/ unit tests;
+in doing so, we obtain a quick glimpse of the unquotation mechanism in Agda.
+
+:Hide_for_presentation_purposes:
+\begin{code}
+{- In order to use ~do~-notation we need to have the following definitions in scope. -}
+{- These definitions are repeated in the section
+    “Metaprogramming with The Typechecking Monad TC”-}
+
+_>>=_        : ∀ {a b} {A : Set a} {B : Set b} → TC A → (A → TC B) → TC B
+_>>=_ = bindTC
+
+_>>_        : ∀ {a b} {A : Set a} {B : Set b} → TC A → TC B → TC B
+_>>_  = λ p q → p >>= (λ _ → q)
+\end{code}
+:End:
+
+Agda permits unnamed tests as follows:
+\begin{spec}
+{- Document what this test shows. -}
+_ : ∀ {x1 … xN} → l ≡ r
+_ = refl
+\end{spec}
+To the uninitated, the undescore seems esoteric and a beginner may well prefer
+to name their tests ~test₀, test₁, test₂, …~. The latter, while disciplined, is
+amicable to the rearranging of the unit tests, say for presentation purposes or
+grouping related tests together.
+
+In this section, we solve this two problems: Tests can easily be relocated without
+requiring any renaming, and tests grouped due to some relationship are easily identified.
+
+In-particular, the above unit test schema now becomes:
+\begin{spec}
+unquoteDecl = test  "Document what this test shows."  ∀ {x1 … xN} → l ≡ r
+\end{spec}
+
+If we could declare ~test~ as a top-level unquoter, then it's use would be less icky!
+For example, it would be nice to have ~syntax~ declarations affect unquotation.
+
+Instead, we declare ~test~ as a normal function yielding results in the ‘type checking’
+monad. *Do not worry about the code, it will be sensible after subsequent sections.*
+\begin{code}
+test : ∀ {ℓ}  (documentation : String) (trivialFact : Set ℓ) → TC ⊤
+test _ t =
+  do η ← freshName "test-nice"
+     τ ← quoteTC t
+     declareDef (arg (arg-info visible relevant) η) τ
+     defineFun η [ clause [] (con (quote refl) []) ]
+\end{code}
+
+Here are some example uses that are orderinr-invariant.
+\begin{code}
+unquoteDecl = test  "Everything is equal to itself"  ∀ {c : ℕ} → c ≡ c
+unquoteDecl = test  "As Russel and Whitehead showed, SS0 is 2" ∀ {c : ℕ} → 1 + 1 ≡ 2
+-- unquoteDecl = test (∀ {c : ℕ} → 1 + 1 ≡ 3) "Error: 2 ≠ 3"
+\end{code}
+
+Even though it's a bit clumsy, I do prefer it since it avoids the
+~_ = refl~ line and replaces ~_ : ⋯~ with the more informative ~test ⋯~.
+
+Morevoer, the reeptition avoided is noticable when we have batch unit tests :grin:
+\begin{code}
+unquoteDecl =
+  do test "Many tests together"     ∀ {c : ℕ} {p : 1 + 1 ≡ 2} → p ≡ p
+     -- test "Crashes since a ≠ b"  ∀ {A : Set} {a b : A} → a ≡ b
+     test "It's all refl!"          ∀ {A : Set} {a b : A} → a ≡ a
+\end{code}
+
+It may seem like all of the above tests produce functions with the same name,
+~"test-nice"~, however naming is resolved after the file is loaded and so no
+name conflicts transpire. We're making use of a bug, it seems.
+
+Anyhow, I think this is cute (─‿‿─)
+
+Here's some variants.
+\begin{code}
+{- Handy infix combinator -}
+infix 0 _⇨_
+_⇨_ = test
+
+{- Alternative, no doc string variant -}
+infix 0 testing_
+testing_ : ∀ {ℓ}  (trivialFact : Set ℓ) → TC ⊤
+testing_ t = test "" t
+\end{code}
+The ~testing_~ is an ‘operator’ since it explicitly
+takes a post-fix argument, and as such the argument
+needn't be enclosed with parentheses. Indeed:
+\begin{code}
+unquoteDecl =
+ do test "Needs parenthesis" (1 ≡ 1)
+    test "Using ∀-scope" ∀ {_ : ℕ} → 1 ≡ 1
+
+    "Using mixfix" ⇨ 1 ≡ 1
+
+    testing 1 ≡ 1
+\end{code}
+
 * ~NAME~ ─Type of known identifiers
 
 ~Name~ is the type of quoting identifiers, Agda names.
 Elements of this type can be formed and pattern matched using
 the ~quote~ keyword.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 a-name : Name
 a-name = quote ℕ
 
@@ -139,16 +242,22 @@ isNat _         = false
 
 -- bad : Set → Name
 -- bad s = quote s  {- s is not known -}
-#+END_SRC
+\end{code}
 
 + ~NAME~ comes equipped with equality, ordering, and a show function.
 + Quote will not work on function arguments; the identifier must be known.
 
 Let's show names:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : showName (quote _≡_) ≡ "Agda.Builtin.Equality._≡_"
 _ = refl
-#+END_SRC
+\end{code}
+
+Or, using our new testing setup:
+\begin{code}
+unquoteDecl = test "Example Name showing" (showName (quote _≡_) ≡ "Agda.Builtin.Equality._≡_")
+\end{code}
+This may not be pretty, but it will be when we have many related tests ;-)
 
 #+BEGIN_SRC org-agda :tangle nil
 _ : showName (quote Red) ≡ "gentle-intro-to-reflection.RGB.Red"
@@ -159,7 +268,7 @@ It would be nice to have ~Red~ be shown as just ~“RGB.Red”~.
 
 First, let's introduce some ‘programming’ helpers to treat Agda strings as if they
 where Haskell strings, and likewise to treat predicates as decidables.
-#+BEGIN_SRC org-agda
+\begin{code}
 {- Like “$” but for strings. -}
 _⟨𝒮⟩_ : (List Char → List Char) → String → String
 f ⟨𝒮⟩ s = fromList (f (toList s))
@@ -169,27 +278,27 @@ toDec : ∀ {ℓ} {A : Set ℓ} → (p : A → Bool) → Decidable {ℓ} {A} (λ
 toDec p x with p x
 toDec p x | false = no λ ()
 toDec p x | true = yes refl
-#+END_SRC
+\end{code}
 
 We can now easily obtain the module's name, then drop it from the data constructor's name.
-#+BEGIN_SRC org-agda
+\begin{code}
 module-name : String
 module-name = takeWhile (toDec (λ c → not (c Char.== '.'))) ⟨𝒮⟩ showName (quote Red)
-#+END_SRC
+\end{code}
 
 #+BEGIN_SRC org-agda :tangle nil
 _ : module-name ≡ "gentle-intro-to-reflection"
 _ = refl
 #+END_SRC
 
-#+BEGIN_SRC org-agda
+\begin{code}
 strName : Name → String
 strName n = drop (1 + String.length module-name) ⟨𝒮⟩ showName n
 {- The “1 +” is for the “.” seperator in qualified names. -}
 
 _ : strName (quote Red) ≡ "RGB.Red"
 _ = refl
-#+END_SRC
+\end{code}
 
 ~NAME~ essentially provides us with the internal representation of a known name,
 for which we can query to obtain its definition or type.
@@ -200,7 +309,7 @@ Later we will show how to get the type constructors of ~ℕ~ from its name.
 Arguments in Agda may be hidden or computationally irrelevant.
 This information is captured by the ~Arg~ type.
 
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 {- Arguments can be (visible), {hidden}, or ⦃instance⦄ -}
 data Visibility : Set where
   visible hidden instance′ : Visibility
@@ -215,10 +324,10 @@ data ArgInfo : Set where
 
 data Arg (A : Set) : Set where
   arg : (i : ArgInfo) (x : A) → Arg A
-#+END_EXAMPLE
+\end{spec}
 
 For example, let's create some helpers that make arguments of any given type ~A~:
-#+BEGIN_SRC org-agda
+\begin{code}
 {- 𝓋isible 𝓇elevant 𝒶rgument -}
 𝓋𝓇𝒶 : {A : Set} → A → Arg A
 𝓋𝓇𝒶 = arg (arg-info visible relevant)
@@ -226,14 +335,14 @@ For example, let's create some helpers that make arguments of any given type ~A~
 {- 𝒽idden 𝓇elevant 𝒶rgument -}
 𝒽𝓇𝒶 : {A : Set} → A → Arg A
 𝒽𝓇𝒶 = arg (arg-info hidden relevant)
-#+END_SRC
+\end{code}
 
 Below are the variable counterparts, for the ~Term~ datatype,
 which will be discussed shortly.
 + Variables are De Bruijn indexed and may be applied to a list of arguments.
 + The index /n/ refers to the argument that is /n/ locations away from ‘here’.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 {- 𝓋isible 𝓇elevant 𝓋ariable -}
 𝓋𝓇𝓋 : (debruijn : ℕ) (args : List (Arg Term)) → Arg Term
 𝓋𝓇𝓋 n args = arg (arg-info visible relevant) (var n args)
@@ -241,14 +350,14 @@ which will be discussed shortly.
 {- 𝒽idden 𝓇elevant 𝓋ariable -}
 𝒽𝓇𝓋 : (debruijn : ℕ) (args : List (Arg Term)) → Arg Term
 𝒽𝓇𝓋 n args = arg (arg-info hidden relevant) (var n args)
-#+END_SRC
+\end{code}
 
 * ~Term~ ─Type of terms
 
 We use the ~quoteTerm~ keyword to turn a well-typed fragment of code
 ---concrete syntax--- into a value of the ~Term~ datatype ---the abstract syntax.
 Here's the definition of ~Term~:
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 data Term where
 
   {- A variable has a De Bruijn index and may be applied to arguments. -}
@@ -287,16 +396,25 @@ data Sort where
 data Clause where
   clause        : (ps : List (Arg Pattern)) (t : Term) → Clause
   absurd-clause : (ps : List (Arg Pattern)) → Clause
-#+END_EXAMPLE
+\end{spec}
 
 ** Example: Simple Types
 
 Here are three examples of “def”ined names, the first two do not take an argument.
 The last takes a visible and relevant argument, 𝓋𝓇𝒶, that is a literal natural.
-#+BEGIN_SRC org-agda
+\begin{code}
 import Data.Vec as V
 import Data.Fin as F
 
+unquoteDecl
+  = do "AST representation of ℕ"  ⇨  quoteTerm ℕ ≡ def (quote ℕ) []
+       "Empty Vec" ⇨ quoteTerm V.Vec ≡ def (quote V.Vec) []
+       "Parameterised datatype"
+         ⇨ quoteTerm (F.Fin 3) ≡ def (quote F.Fin) (𝓋𝓇𝒶 (lit (nat 3)) ∷ [])
+\end{code}
+If we did not use the testing framework, even without comments, we would
+need more lines for these trivial tests:
+\begin{code}
 _ : quoteTerm ℕ ≡ def (quote ℕ) []
 _ = refl
 
@@ -305,12 +423,23 @@ _ = refl
 
 _ : quoteTerm (F.Fin 3) ≡ def (quote F.Fin) (𝓋𝓇𝒶 (lit (nat 3)) ∷ [])
 _ = refl
-#+END_SRC
+\end{code}
 
 ** Example: Simple Terms
 
 Elementary numeric quotations:
-#+BEGIN_SRC org-agda
+\begin{code}
+unquoteDecl =
+  do
+     "Literal" ⇨ quoteTerm 1 ≡ lit (nat 1)
+
+     "Constructors"
+       ⇨    quoteTerm (suc zero)
+          ≡ con (quote suc)
+            (arg (arg-info visible relevant) (quoteTerm zero) ∷ [])
+
+
+
 _ : quoteTerm 1 ≡ lit (nat 1)
 _ = refl
 
@@ -321,13 +450,13 @@ _ = refl
 {- Using our helper 𝓋𝓇𝒶 -}
 _ : quoteTerm (suc zero) ≡ con (quote suc) (𝓋𝓇𝒶 (quoteTerm zero) ∷ [])
 _ = refl
-#+END_SRC
+\end{code}
 
 The first example below demonstrates that ~true~ is a type “con”structor
 that takes no arguments, whence the ~[]~. The second example shows that
 ~_≡_~ is a defined name, not currently applied to any arguments.
 The final example has propositional equality applied to two arguments.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : quoteTerm true ≡ con (quote true) []
 _ = refl
 
@@ -341,20 +470,20 @@ _ :   quoteTerm ("b" ≡ "a")
       ∷ 𝓋𝓇𝒶 (lit (string "b"))
       ∷ 𝓋𝓇𝒶 (lit (string "a")) ∷ [])
 _ = refl
-#+END_SRC
+\end{code}
 
 Notice that a propositional equality actually has four arguments ─a level, a type, and two arguments─
 where the former two happen
 to be inferrable from the latter.
 Here is a more polymorphic example:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : ∀ {level : Level.Level}{Type : Set level} (x y : Type)
     →   quoteTerm (x ≡ y)
        ≡ def (quote _≡_)
            (𝒽𝓇𝓋 3 [] ∷ 𝒽𝓇𝓋 2 [] ∷ 𝓋𝓇𝓋 1 [] ∷ 𝓋𝓇𝓋 0 [] ∷ [])
 
 _ = λ x y → refl
-#+END_SRC
+\end{code}
 Remember that a De Bruijn index ~n~ refers to the lambda variable
 that is ~n+1~ lambdas away from its use site.
 For example, ~𝓋𝓇𝓋 1~ means starting at the ~⋯ ≡ ⋯~, go ~1+1~
@@ -368,19 +497,19 @@ We will demonstrate an example of a section, say
 Known names ~𝒻~ in a quoted term are denoted by a ~quote 𝒻~ in the AST representation.
 
 For example ─I will use this 𝒻ℴ𝓃𝓉 for my postulated items─
-#+BEGIN_SRC org-agda
+\begin{code}
 postulate 𝒜 ℬ : Set
 postulate 𝒻 : 𝒜 → ℬ
 _ : quoteTerm 𝒻 ≡ def (quote 𝒻) []
 _ = refl
-#+END_SRC
+\end{code}
 
 In contrast, names that /vary/ are denoted by a ~var~ constructor in the AST representation.
-#+BEGIN_SRC org-agda
+\begin{code}
 module _ {A B : Set} {f : A → B} where
   _ : quoteTerm f ≡ var 0 []
   _ = refl
-#+END_SRC
+\end{code}
 
 ** Example: Lambda Terms
 
@@ -388,67 +517,67 @@ First we show how reductions with lambdas works then we show how lambda function
 are represented as ~Term~ values.
 
 ~quoteTerm~ typechecks and normalises its argument before yielding a ~Term~ value.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : quoteTerm ((λ x → x) "nice") ≡ lit (string "nice")
 _ = refl
-#+END_SRC
+\end{code}
 
 Eta-reduction happens, ~f ≈ λ x → f x~.
-#+BEGIN_SRC org-agda
+\begin{code}
 id : {A : Set} → A → A
 id x = x
 
 _ :   quoteTerm (λ (x : ℕ) → id x)
     ≡ def (quote id) (𝒽𝓇𝒶 (def (quote ℕ) []) ∷ [])
 _ = refl
-#+END_SRC
+\end{code}
 
 No delta-reduction happens; function definitions are not elaborated.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ :   quoteTerm (id "a")
     ≡ def (quote id)
         (𝒽𝓇𝒶 (def (quote String) []) ∷  𝓋𝓇𝒶 (lit (string "a")) ∷ [])
 _ = refl
-#+END_SRC
+\end{code}
 
 Here is a simple identity function on the Booleans.
 A “lam”da with a “visible” “abs”tract argument named ~"x"~ is introduced
 having as body merely being the 0 nearest-bound variable, applied to an empty
 list of arguments.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : quoteTerm (λ (x : Bool) → x) ≡ lam visible (abs "x" (var 0 []))
 _ = refl
 
-#+END_SRC
+\end{code}
 
 Here is a more complicated lambda abstraction: Note that ~f a~ is represented as
 the variable 0 lambdas away from the body applied to the variable 1 lambda away
 from the body.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : quoteTerm (λ (a : ℕ) (f : ℕ → ℕ) → f a)
     ≡  lam visible (abs "a"
          (lam visible (abs "f"
            (var 0 (arg (arg-info visible relevant) (var 1 []) ∷ [])))))
 _ = refl
-#+END_SRC
+\end{code}
 
 This is rather messy, let's introduce some syntactic sugar to make it more readable.
-#+BEGIN_SRC org-agda
+\begin{code}
 infixr 5 λ𝓋_↦_  λ𝒽_↦_
 
 λ𝓋_↦_  λ𝒽_↦_ : String → Term → Term
 λ𝓋 x ↦ body  = lam visible (abs x body)
 λ𝒽 x ↦ body  = lam hidden (abs x body)
-#+END_SRC
+\end{code}
 Now the previous example is a bit easier on the eyes:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ :   quoteTerm (λ (a : ℕ) (f : ℕ → ℕ) → f a)
     ≡ λ𝓋 "a" ↦ λ𝓋 "f" ↦ var 0 [ 𝓋𝓇𝒶 (var 1 []) ]
 _ = refl
-#+END_SRC
+\end{code}
 
 Using that delicious sugar, let's look at the constant function a number of ways.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : {A B : Set} →   quoteTerm (λ (a : A) (b : B) → a)
                   ≡ λ𝓋 "a" ↦ (λ𝓋 "b" ↦ var 1 [])
 _ = refl
@@ -462,10 +591,10 @@ const a _ = a
 
 _ : quoteTerm const ≡ def (quote const) []
 _ = refl
-#+END_SRC
+\end{code}
 
 Finally, here's an example of a section.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ :   quoteTerm (_≡ "b")
     ≡ λ𝓋 "section" ↦
        (def (quote _≡_)
@@ -474,30 +603,33 @@ _ :   quoteTerm (_≡ "b")
          𝓋𝓇𝒶 (var 0 []) ∷
          𝓋𝓇𝒶 (lit (string "b")) ∷ []))
 _ = refl
-#+END_SRC
+\end{code}
 
 * Metaprogramming with The Typechecking Monad ~TC~
 The ~TC~ monad provides an interface to Agda's type checker.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 postulate
   TC       : ∀ {a} → Set a → Set a
   returnTC : ∀ {a} {A : Set a} → A → TC A
   bindTC   : ∀ {a b} {A : Set a} {B : Set b} → TC A → (A → TC B) → TC B
-#+END_EXAMPLE
+\end{spec}
 
 In order to use ~do~-notation we need to have the following definitions in scope.
-#+BEGIN_SRC org-agda
+\begin{spec}
 _>>=_        : ∀ {a b} {A : Set a} {B : Set b} → TC A → (A → TC B) → TC B
 _>>=_ = bindTC
 
 _>>_        : ∀ {a b} {A : Set a} {B : Set b} → TC A → TC B → TC B
 _>>_  = λ p q → p >>= (λ _ → q)
-#+END_SRC
+\end{spec}
+#
+# “spec” since these definitions were activated earlier in the testing framework.
+# But it's only sensible to show them here in the presentation.
 
 The primitives of ~TC~ can be seen on the [[https://agda.readthedocs.io/en/v2.6.0/language/reflection.html#type-checking-computations][documentation]] page; below are a few notable
 ones that we may use. Other primitives include support for the current context,
 type errors, and metavariables.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 postulate
   {- Take what you have and try to make it fit into the current goal. -}
   unify : (have : Term) (goal : Term) → TC ⊤
@@ -544,7 +676,7 @@ postulate
       to normalise (or not) their results. The default behaviour is no
       normalisation. -}
   withNormalisation : ∀ {a} {A : Set a} → Bool → TC A → TC A
-#+END_EXAMPLE
+\end{spec}
 
 ~TC~ computations, or “metaprograms”, can be run by declaring them as macros or by
 unquoting. Let's begin with the former.
@@ -553,21 +685,21 @@ unquoting. Let's begin with the former.
 
 Recall our ~RGB~ example type was a simple enumeration consisting of ~Red, Green, Blue~.
 Consider the singleton type:
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 data IsRed : RGB → Set where
   yes : IsRed Red
-#+END_EXAMPLE
+\end{spec}
 The name ~Red~ completely determines this datatype; so let's try to generate it
 mechanically. Unfortunately, as far as I could tell, there is currently no way
 to unquote ~data~ declarations. As such, we'll settle for the following
 isomorphic functional formulation:
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 IsRed : RGB → Set
 IsRed x = x ≡ Red
-#+END_EXAMPLE
+\end{spec}
 
 First, let's quote the relevant parts, for readability.
-#+BEGIN_SRC org-agda
+\begin{code}
 “ℓ₀” : Arg Term
 “ℓ₀” = 𝒽𝓇𝒶 (def (quote Level.zero) [])
 
@@ -576,7 +708,7 @@ First, let's quote the relevant parts, for readability.
 
 “Red” : Arg Term
 “Red” = 𝓋𝓇𝒶 (con (quote Red) [])
-#+END_SRC
+\end{code}
 The first two have a nearly identical definition and it would be nice to
 mechanically derive them...
 
@@ -584,14 +716,14 @@ Anyhow,
 we use the ~unquoteDecl~ keyword, which allows us to obtain a ~NAME~ value, ~IsRed~.
 We then quote the desired type, declare a function of that type, then define it
 using the provided ~NAME~.
-#+BEGIN_SRC org-agda
+\begin{code}
 unquoteDecl IsRed =
   do ty ← quoteTC (RGB → Set)
      declareDef (𝓋𝓇𝒶 IsRed) ty
      defineFun IsRed   [ clause [ 𝓋𝓇𝒶 (var "x") ] (def (quote _≡_) (“ℓ₀” ∷ “RGB” ∷ “Red” ∷ 𝓋𝓇𝓋 0 [] ∷ [])) ]
-#+END_SRC
+\end{code}
 Let's try out our newly declared type.
-#+BEGIN_SRC org-agda
+\begin{code}
 red-is-a-solution : IsRed Red
 red-is-a-solution = refl
 
@@ -600,14 +732,14 @@ green-is-not-a-solution = λ ()
 
 red-is-the-only-solution : ∀ {c} → IsRed c → c ≡ Red
 red-is-the-only-solution refl = refl
-#+END_SRC
+\end{code}
 
 There is a major problem with using ~unquoteDef~ outright like this:
 We cannot step-wise refine our program using holes ~?~, since that would
 result in unsolved meta-variables. Instead, we split this process into two stages:
 A programming stage, then an unquotation stage.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 {- Definition stage, we can use ‘?’ as we form this program. -}
 define-Is : Name → Name → TC ⊤
 define-Is is-name qcolour = defineFun is-name
@@ -629,21 +761,21 @@ unquoteDef IsRed′ = define-Is IsRed′ (quote Red)
 {- Trying it out -}
 _ : IsRed′ Red
 _ = refl
-#+END_SRC
+\end{code}
 
 Notice that if we use “unquoteDef”, we must provide a type signature.
 We only do so for illustration; the next code block avoids such a redundancy by
 using “unquoteDecl”.
 
 The above general approach lends itself nicely to the other data constructors as well:
-#+BEGIN_SRC org-agda
+\begin{code}
 unquoteDecl IsBlue  = declare-Is IsBlue  (quote Blue)
 unquoteDecl IsGreen = declare-Is IsGreen (quote Green)
 
 {- Example use -}
 disjoint-rgb  : ∀{c} → ¬ (IsBlue c × IsGreen c)
 disjoint-rgb (refl , ())
-#+END_SRC
+\end{code}
 
 The next natural step is to avoid manually invoking ~declare-Is~ for each constructor.
 Unfortunately, it seems fresh names are not accessible, for some reason. 😢
@@ -651,7 +783,7 @@ Unfortunately, it seems fresh names are not accessible, for some reason. 😢
 For example, you would think the following would produce a function
 named ~gentle-intro-to-reflection.identity~. Yet, it is not in scope.
 I even tried extracting the definition to its own file and no luck.
-#+BEGIN_SRC org-agda
+\begin{code}
 unquoteDecl {- identity -}
   = do {- let η = identity -}
        η ← freshName "identity"
@@ -663,14 +795,14 @@ unquoteDecl {- identity -}
 _ : ∀ {x : ℕ}  →  identity x  ≡  x
 _ = refl
 -}
-#+END_SRC
+\end{code}
 
 *Exercises*:
 0. Comment out the ~freshName~ line above and uncomment the surrounding artifacts to so that the above
    unit test goes through.
 1. Using that as a template, unquote a function ~everywhere-0 : ℕ → ℕ~ that is constantly 0.
 2. Unquote the constant combinator ~K : {A B : Set} → A → B → A~.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 unquoteDecl everywhere-0
   = do ⋯
 
@@ -682,12 +814,12 @@ unquoteDecl K
 
 _ : K 3 "cat" ≡ 3
 _ = refl
-#+END_EXAMPLE
+\end{spec}
 
 *Bonus:* Proofs of a singleton type such as ~IsRed~ are essentially the same for all singelton types
 over ~RGB~. Write, in two stages, a metaprogram that demonstrates each singleton type has a single member
 ─c.f., ~red-is-the-only-solution~ from above. Hint: This question is as easy as the ones before it.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 {- Programming stage }
 declare-unique : Name → (RGB → Set) → RGB → TC ⊤
 declare-unique it S colour =
@@ -701,10 +833,10 @@ unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
 {- Test -}
 _ : ∀ {c} → IsGreen c → c ≡ Green
 _ = green-unique
-#+END_EXAMPLE
+\end{spec}
 
 :Solutions:
-#+BEGIN_SRC org-agda
+\begin{code}
 {- Exercise: -}
 unquoteDecl everywhere-0
   = do let η = everywhere-0
@@ -742,11 +874,11 @@ unquoteDecl blue-unique = declare-unique blue-unique IsBlue Blue
 _ : ∀ {c} → IsGreen c → c ≡ Green
 _ = green-unique
 {- End -}
-#+END_SRC
+\end{code}
 :End:
 
 :Failed_exploration:
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 RGB-constructors : Definition → Name × Name × Name
 RGB-constructors (data-type pars (x ∷ y ∷ z ∷ cs)) = x , y , z
 RGB-constructors _ = n , n , n where n = quote RGB
@@ -767,7 +899,7 @@ unquoteDecl
 -- _ : {!!} -- IsX Red -- gentle-intro-to-reflection.IsX
 -- _ = {!IsX!}
 --
-#+END_EXAMPLE
+\end{spec}
 :End:
 
 * Sidequest: Avoid tedious ~refl~ proofs
@@ -775,7 +907,7 @@ unquoteDecl
 Time for a breather (•̀ᴗ•́)و
 
 Look around your code base for a function that makes explicit pattern matching, such as:
-#+BEGIN_SRC org-agda
+\begin{code}
 just-Red : RGB → RGB
 just-Red Red   = Red
 just-Red Green = Red
@@ -784,12 +916,12 @@ just-Red Blue  = Red
 only-Blue : RGB → RGB
 only-Blue Blue = Blue
 only-Blue _   = Blue
-#+END_SRC
+\end{code}
 
 Such functions have properties which cannot be proven unless we pattern match
 on the arguments they pattern match. For example, that the above function is
 constantly ~Red~ requires pattern matching then a ~refl~ for each clause.
-#+BEGIN_SRC org-agda
+\begin{code}
 just-Red-is-constant : ∀{c} → just-Red c ≡ Red
 just-Red-is-constant {Red}   = refl
 just-Red-is-constant {Green} = refl
@@ -800,13 +932,13 @@ only-Blue-is-constant : ∀{c} → only-Blue c ≡ Blue
 only-Blue-is-constant {Blue}  = refl
 only-Blue-is-constant {Red}   = refl
 only-Blue-is-constant {Green} = refl
-#+END_SRC
+\end{code}
 
 In such cases, we can encode the general design decisions ---/pattern match and yield refl/---
 then apply the schema to each use case.
 
 Here's the schema:
-#+BEGIN_SRC org-agda
+\begin{code}
 constructors : Definition → List Name
 constructors (data-type pars cs) = cs
 constructors _ = []
@@ -821,14 +953,14 @@ by-refls nom thm-you-hope-is-provable-by-refls
       let clauses = List.map mk-cls (constructors δ)
       declareDef (𝓋𝓇𝒶 η) thm-you-hope-is-provable-by-refls
       defineFun η clauses
-#+END_SRC
+\end{code}
 
 Here's a use case.
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : ∀{c} → just-Red c ≡ Red
 _ = nice
   where unquoteDecl nice = by-refls nice (quoteTerm (∀{c} → just-Red c ≡ Red))
-#+END_SRC
+\end{code}
 
 Note:
 0. The first ~nice~ refers to the function
@@ -847,11 +979,11 @@ Note that we use a ~where~ clause since unquotation cannot occur in a ~let~,
 for some reason.
 
 Here's another use case of the proof pattern (•̀ᴗ•́)و
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : ∀{c} → only-Blue c ≡ Blue
 _ = nice
   where unquoteDecl nice = by-refls nice (quoteTerm ∀{c} → only-Blue c ≡ Blue)
-#+END_SRC
+\end{code}
 
 One proof pattern, multiple invocations!
 Super neat stuff :grin:
@@ -881,28 +1013,28 @@ macro block then has the macro call the recursive function.
 In the C language one defines a macro, say, by ~#define luckyNum 1972~ then later uses
 it simply by the name ~luckyNum~. Without macros, we have syntactic overhead using
 the ~unquote~ keyword:
-#+BEGIN_SRC org-agda
+\begin{code}
 luckyNum₀ : Term → TC ⊤
 luckyNum₀ h = unify h (quoteTerm 55)
 
 num₀ : ℕ
 num₀ = unquote luckyNum₀
-#+END_SRC
+\end{code}
 Instead, we can achieve C-style behaviour by placing our metaprogramming code within a ~macro~ block.
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   luckyNum : Term → TC ⊤
   luckyNum h = unify h (quoteTerm 55)
 
 num : ℕ
 num = luckyNum
-#+END_SRC
+\end{code}
 Unlike C, all code fragments must be well-defined.
 
 *Exercise:* Write a macro to always yield the first argument in a function.
 The second example shows how it can be used to access implicit arguments
 without mentioning them :b
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 macro
   first : Term → TC ⊤
   first goal = ⋯
@@ -912,9 +1044,9 @@ myconst = λ x → λ y → first
 
 mysum : ( {x} y : ℕ) → ℕ
 mysum y = y + first
-#+END_EXAMPLE
+\end{spec}
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 {- exercise -}
 macro
   first : Term → TC ⊤
@@ -926,7 +1058,7 @@ myconst = λ x → λ y → first
 mysum : ( {x} y : ℕ) → ℕ
 mysum y = y + first
 {- end -}
-#+END_SRC
+\end{code}
 :End:
 
 C-style macros ─unifying against a concretely quoted term─ are helpeful
@@ -934,20 +1066,20 @@ when learning reflection. For example, define a macro ~use~ that yields
 different strings according to the shape of their input ─this exercises
 increases famalrity with the ~Term~ type. Hint: Pattern match on the
 first argument ;-)
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 macro
   use : Term → Term → TC ⊤
   use = ⋯
-#+END_EXAMPLE
+\end{spec}
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   use : Term → Term → TC ⊤
   use (def _ []) goal = unify goal (quoteTerm "Nice")
   use v goal = unify goal  (quoteTerm "WoahThere")
-#+END_SRC
+\end{code}
 :End:
-#+BEGIN_SRC org-agda
+\begin{code}
 {- Fully defined, no arguments. -}
 
 2+2≈4 : 2 + 2 ≡ 4
@@ -960,14 +1092,14 @@ _ = refl
 
 _ : {x y : ℕ} {p : x ≡ y} → use p ≡ "WoahThere"
 _ = refl
-#+END_SRC
+\end{code}
 
 ** Tedious Repetitive Proofs No More!
 Suppose we wish to prove that addition, multiplication, and exponentiation
 have right units 0, 1, and 1 respectively. We obtain the following nearly identical
 proofs!
 
-#+BEGIN_SRC org-agda
+\begin{code}
 +-rid : ∀{n} → n + 0 ≡ n
 +-rid {zero}  = refl
 +-rid {suc n} = cong suc +-rid
@@ -979,21 +1111,21 @@ proofs!
 ^-rid : ∀{n} → n ^ 1 ≡ n
 ^-rid {zero}  = refl
 ^-rid {suc n} = cong suc ^-rid
-#+END_SRC
+\end{code}
 
 There is clearly a pattern here screaming to be abstracted, let's comply ♥‿♥
 
 The natural course of action in a functional language is to try a higher-order combinator:
-#+BEGIN_SRC org-agda
+\begin{code}
 {- “for loops” or “Induction for ℕ” -}
 foldn : (P : ℕ → Set) (base : P zero) (ind : ∀ n → P n → P (suc n))
       → ∀(n : ℕ) → P n
 foldn P base ind zero    = base
 foldn P base ind (suc n) = ind n (foldn P base ind n)
-#+END_SRC
+\end{code}
 
 Now the proofs are shorter:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : ∀ (x : ℕ) → x + 0 ≡ x
 _ = foldn _ refl (λ _ → cong suc)    {- This and next two are the same -}
 
@@ -1002,7 +1134,7 @@ _ = foldn _ refl (λ _ → cong suc)    {- Yup, same proof as previous -}
 
 _ : ∀ (x : ℕ) → x ^ 1 ≡ x
 _ = foldn _ refl (λ _ → cong suc)    {- No change, same proof as previous -}
-#+END_SRC
+\end{code}
 Unfortunately, we are manually copy-pasting the same proof /pattern/.
 #+begin_quote org
 When you see repetition, copy-pasting, know that there is room for improvement! (•̀ᴗ•́)و
@@ -1015,16 +1147,16 @@ The latter requires possibly less thought and it's the topic of this article, so
 
 *Exercise*: Following the template of the previous exercises, fill in the missing parts below.
 Hint: It's nearly the same level of difficulty as the previous exercises.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 make-rid : (let A = ℕ) (_⊕_ : A → A → A) (e : A) → Name → TC ⊤
 make-rid _⊕_ e nom
  = do ⋯
 
 _ : ∀{x : ℕ} → x + 0 ≡ x
 _ = nice where unquoteDecl nice = make-rid _+_ 0 nice
-#+END_EXAMPLE
+\end{spec}
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 make-rid : (let A = ℕ) (_⊕_ : A → A → A) (e : A) → Name → TC ⊤
 make-rid _⊕_ e nom
  = do let η = nom
@@ -1037,11 +1169,11 @@ make-rid _⊕_ e nom
 
 _ : ∀{x : ℕ} → x + 0 ≡ x
 _ = nice where unquoteDecl nice = make-rid _+_ 0 nice
-#+END_SRC
+\end{code}
 :End:
 
 There's too much syntactic overhead here, let's use macros instead.
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   _trivially-has-rid_ : (let A = ℕ) (_⊕_ : A → A → A) (e : A) → Term → TC ⊤
   _trivially-has-rid_ _⊕_ e goal
@@ -1051,10 +1183,10 @@ macro
           ∷ 𝓋𝓇𝒶 (con (quote refl) [])            {- Base case      -}
           ∷ 𝓋𝓇𝒶 (λ𝓋 "_" ↦ quoteTerm (cong suc))  {- Inductive step -}
           ∷ []))
-#+END_SRC
+\end{code}
 
 Now the proofs have minimal repetition /and/ the proof pattern is written only /once/:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : ∀ (x : ℕ) → x + 0 ≡ x
 _ = _+_ trivially-has-rid 0
 
@@ -1063,7 +1195,7 @@ _ = _*_ trivially-has-rid 1
 
 _ : ∀ (x : ℕ) → x * 1 ≡ x
 _ = _^_ trivially-has-rid 1
-#+END_SRC
+\end{code}
 
 Note we could look at the type of the goal, find the operator ~_⊕_~ and the unit;
 they need not be passed in. Later we will see how to reach into the goal type
@@ -1078,7 +1210,7 @@ versus how Agda's thinking. For example, you may have noticed that in the previo
 macro, Agda normalised the expression ~suc n + 0~ into ~suc (n + 0)~ by invoking the definition
 of ~_+_~. We may inspect the goal of a function with the ~quoteGoal ⋯ in ⋯~ syntax:
 
-#+BEGIN_SRC org-agda
+\begin{code}
 +-rid′ : ∀{n} → n + 0 ≡ n
 +-rid′ {zero}  = refl
 +-rid′ {suc n} = quoteGoal e in
@@ -1101,7 +1233,7 @@ of ~_+_~. We may inspect the goal of a function with the ~quoteGoal ⋯ in ⋯~ 
     _ = refl
   in
   cong suc +-rid′
-#+END_SRC
+\end{code}
 
 It would be really nice to simply replace the last line by a macro, say ~induction~.
 Unfortunately, for that I would need to obtain the name ~+-rid′~, which as far as I could
@@ -1117,26 +1249,26 @@ Given ~p : x ≡ y~, we cannot simply yield ~def (quote sym) [ 𝓋𝓇𝒶 p ]~
 takes four arguments ─compare when we quoted ~_≡_~ earlier. Instead, we infer type of ~p~
 to be, say, ~quoteTerm (_≡_ {ℓ} {A} x y)~. Then we can correctly provide all the required arguments.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 ≡-type-info : Term → TC (Arg Term × Arg Term × Term × Term)
 ≡-type-info (def (quote _≡_) (𝓁 ∷ 𝒯 ∷ arg _ l ∷ arg _ r ∷ [])) = returnTC (𝓁 , 𝒯 , l , r)
 ≡-type-info _ = typeError [ strErr "Term is not a ≡-type." ]
-#+END_SRC
+\end{code}
 
 What if later we decided that we did not want a proof of ~x ≡ y~, but rather of ~x ≡ y~.
 In this case, the orginal proof ~p~ suffices. Rather than rewriting our proof term, our
 macro could try providing it if the symmetry application fails.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 {- Syntactic sugar for trying a computation, if it fails then try the other one -}
 try-fun : ∀ {a} {A : Set a} → TC A → TC A → TC A
 try-fun = catchTC
 
 syntax try-fun t f = try t or-else f
-#+END_SRC
+\end{code}
 
 With the setup in hand, we can now form our macro:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   apply₁ : Term → Term → TC ⊤
   apply₁ p goal = try (do τ ← inferType p
@@ -1144,10 +1276,10 @@ macro
                           unify goal (def (quote sym) (𝓁 ∷ 𝒯 ∷ 𝒽𝓇𝒶 l ∷ 𝒽𝓇𝒶 r ∷ 𝓋𝓇𝒶 p ∷ [])))
                   or-else
                        unify goal p
-#+END_SRC
+\end{code}
 
 For example:
-#+BEGIN_SRC org-agda
+\begin{code}
 postulate 𝓍 𝓎 : ℕ
 postulate 𝓆 : 𝓍 + 2 ≡ 𝓎
 
@@ -1157,20 +1289,20 @@ _ = apply₁ 𝓆
 
 _ : 𝓍 + 2 ≡ 𝓎
 _ = apply₁ 𝓆
-#+END_SRC
+\end{code}
 
 Let's furnish ourselves with the ability to inspect the /produced/ proofs.
-#+BEGIN_SRC org-agda
+\begin{code}
 {- Type annotation -}
 syntax has A a = a ∶ A
 
 has : ∀ (A : Set) (a : A) → A
 has A a = a
-#+END_SRC
+\end{code}
 We are using the ‘ghost colon’ obtained with input ~\:~.
 
 Let's try this on an arbitrary type:
-#+BEGIN_SRC org-agda
+\begin{code}
 woah : {A : Set} (x y : A) → x ≡ y → (y ≡ x) × (x ≡ y)
 woah x y p = apply₁ p , apply₁ p
 
@@ -1181,23 +1313,23 @@ woah x y p = apply₁ p , apply₁ p
 
   second-pf : (apply₁ p ∶ (x ≡ y)) ≡ p
   second-pf = refl
-#+END_SRC
+\end{code}
 
 It is interesting to note that on non ≡-terms, ~apply₁~ is just a no-op.
 Why might this be the case?
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : ∀ {A : Set} {x : A} → apply₁ x ≡ x
 _ = refl
 
 _ : apply₁ "huh" ≡ "huh"
 _ = refl
-#+END_SRC
+\end{code}
 
 *Exercise:* When we manually form a proof invoking symmetry we simply write, for example, ~sym p~
 and the implict arguments are inferred. We can actually do the same thing here! We were a bit dishonest above. 👂
 Rewrite ~apply₁~, call it ~apply₂, so that the ~try~ block is a single, unparenthesised, ~unify~ call.
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   apply₂ : Term → Term → TC ⊤
   apply₂ p goal = try unify goal (def (quote sym)  (𝓋𝓇𝒶 p ∷ []))
@@ -1205,21 +1337,21 @@ macro
 
 _ : {A : Set} (x y : A) → x ≡ y → (y ≡ x) × (x ≡ y)
 _ = λ x y p → apply₂ p , apply₂ p
-#+END_SRC
+\end{code}
 :End:
 
 *Exercise:* Extend the previous macro so that we can prove statements of the form ~x ≡ x~ regardless of what ~p~
 proves. Aesthetics hint: ~try_or-else_~ doesn't need brackets in this case, at all.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 macro
   apply₃ : Term → Term → TC ⊤
   apply₃ p goal = ⋯
 
 yummah : {A : Set} {x y : A} (p : x ≡ y)  →  x ≡ y  ×  y ≡ x  ×  y ≡ y
 yummah p = apply₃ p , apply₃ p , apply₃ p
-#+END_EXAMPLE
+\end{spec}
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   apply₃ : Term → Term → TC ⊤
   apply₃ p goal = try unify goal (def (quote sym) (𝓋𝓇𝒶 p ∷ []))
@@ -1228,12 +1360,12 @@ macro
 
 yummah : {A : Set} {x y : A} (p : x ≡ y)  →  x ≡ y  ×  y ≡ x  ×  y ≡ y
 yummah p = apply₃ p , apply₃ p , apply₃ p
-#+END_SRC
+\end{code}
 :End:
 
 *Exercise:* Write the following seemingly silly macro.
 Hint: You cannot use the ~≡-type-info~ method directly, instead you must invoke ~getType~ beforehand.
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 ≡-type-info′ : Name → TC (Arg Term × Arg Term × Term × Term)
 ≡-type-info′ = ⋯
 
@@ -1243,9 +1375,9 @@ macro
 
 _ : sumSides 𝓆 ≡ 𝓍 + 2 + 𝓎
 _ = refl
-#+END_EXAMPLE
+\end{spec}
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 ≡-type-info′ : Name → TC (Arg Term × Arg Term × Term × Term)
 ≡-type-info′ n = do τ ← getType n; ≡-type-info τ
 
@@ -1255,7 +1387,7 @@ macro
 
 _ : sumSides 𝓆 ≡ 𝓍 + 2 + 𝓎
 _ = refl
-#+END_SRC
+\end{code}
 :End:
 
 *Exercise:* Write two macros, ~left~ and ~right~, such that
@@ -1263,7 +1395,7 @@ _ = refl
 These two macros provide the left and right hand sides of the
 ≡-term they are given.
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   left : Name → Term → TC ⊤
   left n goal = do _ , _ , l , r ← ≡-type-info′ n; unify goal l
@@ -1279,7 +1411,7 @@ _ = refl
 
 _ : right 𝓆 ≡ 𝓎
 _ = refl
-#+END_SRC
+\end{code}
 :End:
 
 * Heuristic for Writing a Macro
@@ -1316,7 +1448,7 @@ and our macro is intended to obtain the function ~h~. We proceed as follows:
 
 *Exercise:* Carry this through to produce the above discussed example macro, call it ~≡-head~. To help you on your
 way, here is a useful function:
-#+BEGIN_SRC org-agda
+\begin{code}
 {- If we have “f $ args” return “f”. -}
 $-head : Term → Term
 $-head (var v args) = var v []
@@ -1324,9 +1456,9 @@ $-head (con c args) = con c []
 $-head (def f args) = def f []
 $-head (pat-lam cs args) = pat-lam cs []
 $-head t = t
-#+END_SRC
+\end{code}
 :Solution:
-#+BEGIN_SRC org-agda
+\begin{code}
 
 postulate 𝒽 : ℕ → ℕ
 postulate 𝒹 𝓮 : ℕ
@@ -1357,7 +1489,7 @@ _ = refl
 
 _ : ∀ {l r s : ℕ} {p : l + r ≡ s} → ≡-head p ≡ _+_
 _ = refl
-#+END_SRC
+\end{code}
 :End:
 
 
@@ -1365,7 +1497,7 @@ With the ability to obtain functions being applied in propositional equalities,
 we can now turn to lifiting a proof from ~x ≡ y~ to suffice proving ~f x ≡ f y~.
 We start with the desired goal and use the stepwise refinement approach outlined
 earlier to arrive at:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   apply₄ : Term → Term → TC ⊤
   apply₄ p goal = try (do τ ← inferType goal
@@ -1380,16 +1512,16 @@ _ : ∀ {x y : ℕ} {f g : ℕ → ℕ} (p : x ≡ y)
     →  x ≡ y
     -- →  f x ≡ g y {- “apply₄ p” now has a unification error ^_^ -}
 _ = λ p → apply₄ p
-#+END_SRC
+\end{code}
 
 * What about somewhere deep within a subexpression?
 
 Consider,
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
              suc X + (X * suc X + suc X)
            ≡⟨ cong (λ it → suc X + it) (+-suc _ _) ⟩
              suc X + suc (X * suc X + X)
-#+END_EXAMPLE
+\end{spec}
 Can we find ~(λ it → suc X + it)~ mechanically ;-)
 
 Using the same refinement apporach outlined earlier, we begin with the following
@@ -1397,16 +1529,16 @@ working code then slowly, one piece at a time, replace the whole thing with an
 ~unquote (unify (quoteTerm ⋯workingCodeHere⋯))~. Then we push the ~quoteTerm~
 further in as much as possible and construct the helper functions to make
 this transation transpire.
-#+BEGIN_SRC org-agda
+\begin{code}
 open import Data.Nat.Properties
 {- +-suc : ∀ m n → m + suc n ≡ suc (m + n) -}
 
 test₀ : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
 test₀ {m} {n} {k} = cong (k +_) (+-suc m n)
-#+END_SRC
+\end{code}
 
 Let's follow the aforementioned approach by starting out with some postulates.
-#+BEGIN_SRC org-agda
+\begin{code}
 postulate 𝒳 : ℕ
 postulate 𝒢 : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
 
@@ -1416,12 +1548,13 @@ postulate 𝒢 : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (�
 𝒢ˡ 𝒢ʳ : Term
 𝒢ˡ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝒮𝒳 ∷ [])) ∷ [])
 𝒢ʳ = def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 (con (quote suc) [ 𝓋𝓇𝒶 (def (quote _+_) (𝓋𝓇𝒶 (def (quote _*_) (𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ 𝒮𝒳 ∷ [])) ∷ 𝓋𝓇𝒶 (quoteTerm 𝒳) ∷ [])) ]) ∷ [])
-#+END_SRC
+\end{code}
 
 It seems that the left and right sides of 𝒢 “meet” at ~def (quote _+_) (𝒮𝒳 ∷ [])~:
 We check the equality of the quoted operator, ~_+_~, then recursively check the arguments.
 Whence the following naive algorithm:
-#+BEGIN_SRC org-agda
+
+\begin{code}
 {- Should definitily be in the standard library -}
 ⌊_⌋ : ∀ {a} {A : Set a} → Dec A → Bool
 ⌊ yes p ⌋ = true
@@ -1445,7 +1578,7 @@ l ⊓ r with l $-≟ r | l | r
 ...| true | con f args | con f′ args′ = con f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
 ...| true | def f args | def f′ args′ = def f (List.zipWith (λ{ (arg i!! t) (arg j!! s) → arg i!! (t ⊓ s) }) args args′)
 ...| true | ll | _ = ll {- Left biased; using ‘unknown’ does not ensure idempotence. -}
-#+END_SRC
+\end{code}
 
 # You would think the ~var~ and ~con~ cases /should/ also be considered, but they're not. Why is that?
 #
@@ -1453,7 +1586,7 @@ The bodies have names involving ~!!~, this is to indicate a location of improvem
 Indeed, this naive algorithm ignores visibility and relevance of arguments ─far from ideal.
 
 Joyously this works!  😂
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : 𝒢ˡ ⊓ 𝒢ʳ ≡ def (quote _+_) (𝒮𝒳 ∷ 𝓋𝓇𝒶 unknown ∷ [])
 _ = refl
 
@@ -1464,7 +1597,7 @@ _ : {X : ℕ} {𝒶 : ℕ → ℕ}
         gr = quoteTerm (𝒶 X + 𝒶 (X * 𝒶 X + X))
     in gl ⊓ gr ≡ def (quote _+_) (𝓋𝓇𝒶 (var 0 [ 𝓋𝓇𝒶 (var 1 []) ]) ∷ 𝓋𝓇𝒶 unknown ∷ [])
 _ = refl
-#+END_SRC
+\end{code}
 The ~unknown~ terms are far from desirable ─we ought to replace them with sections; i.e., an anonoymous lambda.
 My naive algorithm to achieve a section from a term containing ‘unknown’s is as follows:
 1. Replace every ~unknown~ with a De Bruijn index.
@@ -1473,7 +1606,7 @@ My naive algorithm to achieve a section from a term containing ‘unknown’s is
 
 There is clear inefficiency here, but I'm not aiming to be efficient, just believable to some degree.
 
-#+BEGIN_SRC org-agda
+\begin{code}
 {- ‘unknown’ goes to a variable, a De Bruijn index -}
 unknown-elim : ℕ → List (Arg Term) → List (Arg Term)
 unknown-elim n [] = []
@@ -1499,20 +1632,20 @@ patch it@(def f args) = unknown-λ (unknown-count args) (def f (unknown-elim 0 a
 patch it@(var f args) = unknown-λ (unknown-count args) (var f (unknown-elim 0 args))
 patch it@(con f args) = unknown-λ (unknown-count args) (con f (unknown-elim 0 args))
 patch t = t
-#+END_SRC
+\end{code}
 
 Putting meet, ~_⊓_~, and this ~patch~ together into a macro:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   spine : Term → Term → TC ⊤
   spine p goal
     = do τ ← inferType p
          _ , _ , l , r ← ≡-type-info τ
          unify goal (patch (l ⊓ r))
-#+END_SRC
+\end{code}
 
 The expected tests pass ─so much joy :joy:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : spine 𝒢 ≡ suc 𝒳 +_
 _ = refl
 
@@ -1527,12 +1660,12 @@ module testing-postulated-functions where
 _ : {X : ℕ} {G : suc X + (X * suc X + suc X)  ≡  suc X + suc (X * suc X + X)}
   → quoteTerm G ≡ var 0 []
 _ = refl
-#+END_SRC
+\end{code}
 
 The tests for ~≡-head~ still go through using ~spine~
 which can thus be thought of as a generalisation ;-)
 :OlderTests:
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : spine 𝓅𝒻 ≡ 𝒽
 _ = refl
 
@@ -1547,11 +1680,11 @@ _ = refl
 
 _ : ∀ {l r s : ℕ} {p : l + r ≡ s} → spine p ≡ _+_
 _ = refl
-#+END_SRC
+\end{code}
 :End:
 
 Now the original problem is dealt with as a macro:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   apply₅ : Term → Term → TC ⊤
   apply₅ p hole
@@ -1559,16 +1692,16 @@ macro
          _ , _ , l , r ← ≡-type-info τ
          unify hole ((def (quote cong)
               (𝓋𝓇𝒶 (patch (l ⊓ r)) ∷ 𝓋𝓇𝒶 p ∷ [])))
-#+END_SRC
+\end{code}
 
 Curious, why in the following tests we cannot simply use ~+-suc _ _~?
-#+BEGIN_SRC org-agda
+\begin{code}
 _ : suc 𝒳 + (𝒳 * suc 𝒳 + suc 𝒳)  ≡  suc 𝒳 + suc (𝒳 * suc 𝒳 + 𝒳)
 _ = apply₅ (+-suc (𝒳 * suc 𝒳) 𝒳)
 
-test : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
-test {m} {n} {k} = apply₅ (+-suc m n)
-#+END_SRC
+test₁ : ∀ {m n k : ℕ} → k + (m + suc n) ≡ k + suc (m + n)
+test₁ {m} {n} {k} = apply₅ (+-suc m n)
+\end{code}
 
 This is super neat stuff ^_^
 
@@ -1583,7 +1716,7 @@ Let's use this. Below is an extraction of one of the first assignments for a cla
 I taught this year ─CompSci 3EA3 Specfications and Correctness. Unfortunately, the
 ~cong~ and explicit associativity made Agda appear a bit clunky at first; let's change that
 impression.
-#+BEGIN_SRC org-agda
+\begin{code}
 open import Relation.Binary.PropositionalEquality using () renaming (refl to definition-chasing)
 open import Data.Nat.Properties
 
@@ -1640,10 +1773,10 @@ module PrerequisiteExam where
                 so we can define m to be it by filling the hole for m above. -}
              2 * m
            ∎
-#+END_SRC
+\end{code}
 
 Takes II:
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
   apply : Term → Term → TC ⊤
   apply p goal = try (do τ ← inferType goal
@@ -1778,11 +1911,11 @@ module PrerequisiteExam─with─tactics where
            ≡⟨ definition-chasing ⟩
              2 * m
            ∎
-#+END_SRC
+\end{code}
 
 * COMMENT Flatenning ─& mixins ─anaphoric macros in Agda?
 
-#+BEGIN_SRC org-agda
+\begin{code}
 
 data Empty : Set₁ where
 
@@ -1840,13 +1973,13 @@ two₂ = field₁ Two
 
 -- it would be nice to generate the names fieldᵢ rather than write them out by hand.
 
-#+END_SRC
+\end{code}
 
 * TODO COMMENT ideas
 
 + deriving decidable equality
 
-#+BEGIN_EXAMPLE org-agda
+\begin{spec}
 data RGB : Set where
   Red Green Blue : RGB
 
@@ -1863,11 +1996,11 @@ Green ≟ Blue = no (λ ())
 Blue ≟ Red = no (λ ())
 Blue ≟ Green = no (λ ())
 Blue ≟ Blue = yes refl
-#+END_EXAMPLE
+\end{spec}
 
 + theory combinators
 
-#+BEGIN_SRC org-agda
+\begin{code}
 macro
     plus-to-times : Term → Term → TC ⊤
     plus-to-times (def (quote _+_) (a ∷ b ∷ [])) hole = unify hole (def (quote _*_) (a ∷ b ∷ []))
@@ -1876,7 +2009,9 @@ macro
 thm : (a b : ℕ) → plus-to-times (a + b) ≡ a * b
 thm a b = refl
 
-#+END_SRC
+--------------------------------------------------------
+\end{code}
+
 
 + flatten: Take a nested record hierarchy and produce a flattened telescope, since
   records cannot be unquoted.
